@@ -1,0 +1,50 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependencies & Build
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Environment & Credentials
+.env
+.env.*
+!.env.example
+
+# Business Data & Databases (Security & Confidentiality)
+server/data/*.db
+server/data/*.db-*
+server/data/*.db-shm
+server/data/*.db-wal
+server/data/*.backup*
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+
+# Excel files and raw data exports
+*.xlsx
+*.xls
+*.csv
+
+# Keep data folder structure
+!server/data/.gitkeep
