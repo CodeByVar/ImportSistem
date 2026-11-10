@@ -133,7 +133,7 @@ export default function SuperLogin({ onLoginSuccess }) {
             </div>
 
             {/* Headline */}
-            <h2 className="text-3xl lg:text-4xl font-extrabold text-white leading-tight tracking-tight mb-2">
+            <h2 className="text-3xl lg:text-4xl font-extrabold text-[#f6f6f7] leading-tight tracking-tight mb-2">
               Todo en orden.<br />
               Todo en movimiento.
             </h2>
