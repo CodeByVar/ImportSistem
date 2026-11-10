@@ -1,13 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   User, 
-  Lock, 
+  KeyRound, 
   Eye, 
   EyeOff, 
-  ChevronLeft, 
-  ChevronRight, 
+  ArrowRight, 
+  ShieldCheck, 
+  Check, 
+  MapPin, 
+  Lock, 
   AlertCircle, 
-  CheckCircle2 
+  CheckCircle2,
+  X
 } from 'lucide-react';
 
 // Google Colored G SVG Icon
@@ -34,58 +38,17 @@ function GoogleIcon() {
   );
 }
 
-// Carousel slides representing maritime port & warehouse
-const PORT_SLIDES = [
-  {
-    image: '/port-warehouse.jpg',
-    tag: 'OPERACIONES PORTUARIAS',
-    badge: 'Arica / Iquique',
-    title: 'Terminal de Contenedores',
-    subtitle: 'Recepción aduanera y control logístico multimodal en tiempo real.'
-  },
-  {
-    image: '/port-ship.jpg',
-    tag: 'OPERACIONES PORTUARIAS',
-    badge: 'China Ningbo',
-    title: 'Embarques en Tránsito',
-    subtitle: 'Monitoreo de buques de carga marítima, pólizas de importación y prelistas.'
-  },
-  {
-    image: '/port-dock.jpg',
-    tag: 'OPERACIONES PORTUARIAS',
-    badge: 'Cochabamba',
-    title: 'Almacén Central',
-    subtitle: 'Gestión física de inventario valorizado y distribución mayorista.'
-  }
-];
-
 export default function SuperLogin({ onLoginSuccess }) {
   const [username, setUsername] = useState(() => localStorage.getItem('siscontrol_last_username') || '');
   const [pinCode, setPinCode] = useState('');
   const [showPin, setShowPin] = useState(false);
-  const [currentSlide, setCurrentSlide] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [showForgotModal, setShowForgotModal] = useState(false);
+  const [showAccessModal, setShowAccessModal] = useState(false);
 
-  // Auto-cycle carousel
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % PORT_SLIDES.length);
-    }, 7000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const nextSlide = () => {
-    setCurrentSlide((prev) => (prev + 1) % PORT_SLIDES.length);
-  };
-
-  const prevSlide = () => {
-    setCurrentSlide((prev) => (prev - 1 + PORT_SLIDES.length) % PORT_SLIDES.length);
-  };
-
-  // Submit credentials
+  // Form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!username.trim()) {
@@ -126,7 +89,7 @@ export default function SuperLogin({ onLoginSuccess }) {
     }
   };
 
-  // Google Login Handler
+  // Google / Quick SuperAdmin Login
   const handleGoogleLogin = async () => {
     setIsLoading(true);
     setErrorMessage('');
@@ -138,7 +101,7 @@ export default function SuperLogin({ onLoginSuccess }) {
         localStorage.setItem('siscontrol_last_username', superAdmin.username);
         setTimeout(() => {
           onLoginSuccess(superAdmin);
-        }, 600);
+        }, 500);
       } else {
         setErrorMessage('No hay usuarios activos registrados en el sistema');
       }
@@ -149,87 +112,75 @@ export default function SuperLogin({ onLoginSuccess }) {
     }
   };
 
-  const activeSlide = PORT_SLIDES[currentSlide];
-
   return (
-    // 1. Outer Container: Full-screen height with depth overlay & subtle blurred background
-    <div className="min-h-screen w-full flex items-center justify-center p-4 md:p-8 bg-slate-950 relative overflow-hidden select-none font-sans">
+    <div className="min-h-screen w-full flex flex-col items-center justify-center p-4 sm:p-6 md:p-8 bg-[#0B1118] text-slate-900 font-sans select-none relative overflow-x-hidden">
       
-      {/* Subtle background image with overlay/blur to give depth behind floating card */}
-      <div 
-        className="absolute inset-0 bg-cover bg-center opacity-20 blur-2xl scale-110 pointer-events-none"
-        style={{ backgroundImage: `url(${PORT_SLIDES[0].image})` }}
-      />
-      <div className="absolute inset-0 bg-slate-950/80 pointer-events-none" />
-
-      {/* 2. Central Floating Card: Centered modal container, min-h-[640px], max-w-5xl */}
-      <div className="relative z-10 w-full max-w-5xl bg-white rounded-[2.5rem] shadow-2xl p-3 grid grid-cols-1 md:grid-cols-2 min-h-[640px] overflow-hidden my-auto border border-slate-100">
+      {/* Main Card Container */}
+      <div className="relative z-10 w-full max-w-[1020px] bg-white rounded-[2.5rem] shadow-2xl shadow-black/60 overflow-hidden grid grid-cols-1 md:grid-cols-2 min-h-[620px] border border-slate-800/20">
         
         {/* ============================================================== */}
-        {/* 3. Left Column (Visual Showcase Card)                         */}
+        {/* Left Column (Warehouse & Logistics Visual Showcase)            */}
         {/* ============================================================== */}
-        <div className="relative rounded-[2rem] overflow-hidden hidden md:flex flex-col justify-between p-8 text-white bg-slate-900 shadow-inner">
+        <div className="relative hidden md:flex flex-col justify-between p-8 lg:p-10 text-white overflow-hidden bg-slate-950">
           
-          {/* Full-bleed background image with object-cover brightness-75 */}
+          {/* Warehouse Background Image */}
           <img
-            key={activeSlide.image}
-            src={activeSlide.image}
-            alt={activeSlide.title}
-            className="absolute inset-0 w-full h-full object-cover brightness-75 transition-all duration-700 ease-out"
+            src="/port-warehouse.jpg"
+            alt="Almacén SISCONTROL"
+            className="absolute inset-0 w-full h-full object-cover brightness-[0.70] contrast-105"
           />
 
-          {/* Gradient overlay for readability */}
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/20 to-slate-950/40 pointer-events-none" />
+          {/* Deep gradient overlay for high contrast */}
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/30 to-slate-950/40 pointer-events-none" />
 
-          {/* Top bar: Left badge "OPERACIONES PORTUARIAS", right pill badge "Arica / Iquique" */}
+          {/* Top Bar: Operaciones Portuarias + Cochabamba, BO */}
           <div className="relative z-10 flex items-center justify-between gap-2">
-            <span className="bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-xs font-semibold tracking-wider uppercase text-white shadow-xs">
-              {activeSlide.tag}
-            </span>
-            <span className="bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-xs font-semibold text-white shadow-xs">
-              {activeSlide.badge}
-            </span>
+            <div className="flex items-center gap-2 bg-black/40 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white/20 text-[11px] font-semibold text-white tracking-wider uppercase shadow-xs">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>OPERACIONES PORTUARIAS</span>
+            </div>
+            <div className="flex items-center bg-black/40 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white/20 text-[11px] font-medium text-slate-200 shadow-xs">
+              Cochabamba, BO
+            </div>
           </div>
 
-          {/* Bottom area: Slide info + clean footer info + circular navigation controls */}
-          <div className="relative z-10 flex flex-col gap-4">
-            <div>
-              <h2 className="text-2xl font-black tracking-tight text-white drop-shadow-md">
-                {activeSlide.title}
-              </h2>
-              <p className="text-xs text-slate-200 mt-1 font-medium leading-relaxed drop-shadow max-w-sm">
-                {activeSlide.subtitle}
-              </p>
+          {/* Bottom Area: Main Headline + Rivero Brand + Acceso Seguro */}
+          <div className="relative z-10">
+            {/* Tag line */}
+            <div className="text-[11px] font-bold tracking-[0.2em] text-[#F95721] uppercase mb-2">
+              INVENTARIO · LOGÍSTICA · CONTROL
             </div>
 
+            {/* Headline */}
+            <h2 className="text-3xl lg:text-4xl font-extrabold text-white leading-tight tracking-tight mb-2">
+              Todo en orden.<br />
+              Todo en movimiento.
+            </h2>
+
+            {/* Subtitle */}
+            <p className="text-xs lg:text-sm text-slate-300 font-normal leading-relaxed max-w-sm mb-6">
+              Gestiona tu operación con claridad, desde el almacén hasta cada entrega.
+            </p>
+
+            {/* Footer Bar */}
             <div className="flex items-center justify-between pt-4 border-t border-white/20">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-full bg-orange-600 text-white font-black text-[11px] flex items-center justify-center shadow-xs">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-[#F95721] text-white font-black text-base flex items-center justify-center shadow-md">
                   R
                 </div>
-                <span className="text-xs font-extrabold text-white tracking-wide">
-                  Importadora Rivero - SISCONTROL ERP
-                </span>
+                <div className="flex flex-col leading-tight">
+                  <span className="text-xs font-bold text-white tracking-wide">
+                    Importadora Rivero
+                  </span>
+                  <span className="text-[10px] font-medium text-slate-400 tracking-wider uppercase mt-0.5">
+                    SISCONTROL ERP
+                  </span>
+                </div>
               </div>
 
-              {/* Previous/next circular navigation controls (h-8 w-8 rounded-full bg-black/40 backdrop-blur-md) */}
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={prevSlide}
-                  title="Anterior escena"
-                  className="h-8 w-8 rounded-full bg-black/40 backdrop-blur-md hover:bg-black/60 flex items-center justify-center text-white border border-white/20 cursor-pointer transition-all active:scale-95 shadow-sm"
-                >
-                  <ChevronLeft size={16} />
-                </button>
-                <button
-                  type="button"
-                  onClick={nextSlide}
-                  title="Siguiente escena"
-                  className="h-8 w-8 rounded-full bg-black/40 backdrop-blur-md hover:bg-black/60 flex items-center justify-center text-white border border-white/20 cursor-pointer transition-all active:scale-95 shadow-sm"
-                >
-                  <ChevronRight size={16} />
-                </button>
+              <div className="flex items-center gap-1.5 text-xs font-medium text-slate-300">
+                <ShieldCheck size={15} className="text-emerald-400" />
+                <span>Acceso seguro</span>
               </div>
             </div>
           </div>
@@ -237,34 +188,43 @@ export default function SuperLogin({ onLoginSuccess }) {
         </div>
 
         {/* ============================================================== */}
-        {/* 4. Right Column (Form Panel)                                  */}
+        {/* Right Column (Login Form)                                      */}
         {/* ============================================================== */}
-        <div className="p-8 md:p-12 flex flex-col justify-between bg-white w-full">
+        <div className="p-8 sm:p-10 lg:p-12 flex flex-col justify-between bg-white w-full">
           
-          {/* Top bar: Brand title "IMPORTADORA RIVERO" on left, country status with green dot on right */}
+          {/* Top Header: Logo + Bolivia Badge */}
           <div className="flex items-center justify-between gap-4">
-            <span className="font-extrabold tracking-wider text-slate-950 text-sm uppercase">
-              IMPORTADORA <span className="text-orange-600">RIVERO</span>
-            </span>
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-[#F95721] text-white font-black text-sm flex items-center justify-center shadow-xs">
+                R
+              </div>
+              <span className="font-extrabold tracking-wider text-slate-900 text-xs sm:text-sm uppercase">
+                IMPORTADORA <span className="text-[#F95721]">RIVERO</span>
+              </span>
+            </div>
 
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 bg-slate-50 px-3 py-1 rounded-full border border-slate-200">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>• Bolivia (Bs)</span>
+            <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600 bg-white px-3 py-1 rounded-full border border-slate-200 shadow-2xs">
+              <MapPin size={13} className="text-[#F95721]" />
+              <span>Bolivia</span>
             </div>
           </div>
 
-          {/* Form Body: Centered vertically (my-auto max-w-sm mx-auto w-full) */}
+          {/* Form Content */}
           <div className="my-auto max-w-sm mx-auto w-full py-4">
             
-            {/* Title & Subtitle */}
-            <div className="mb-6">
-              <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-                Hola, Colaborador
-              </h1>
-              <p className="text-xs text-slate-500 mb-6 mt-1">
-                Bienvenido a SISCONTROL ERP
-              </p>
+            {/* Sub-badge */}
+            <div className="flex items-center gap-2 text-[10px] font-bold tracking-widest uppercase text-slate-500 mb-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              <span>PORTAL DE COLABORADORES</span>
             </div>
+
+            {/* Title & Subtitle */}
+            <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
+              Hola, colaborador
+            </h1>
+            <p className="text-xs text-slate-500 mt-1 mb-6">
+              Ingresa tus datos para continuar a SISCONTROL ERP.
+            </p>
 
             {/* Error Message */}
             {errorMessage && (
@@ -282,83 +242,68 @@ export default function SuperLogin({ onLoginSuccess }) {
               </div>
             )}
 
-            {/* Login Form */}
-            <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+            {/* Form */}
+            <form onSubmit={handleSubmit} className="flex flex-col gap-3.5">
               
               {/* Usuario Field */}
-              <div className="relative">
-                <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Usuario"
-                  required
-                  className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-orange-500 focus:outline-none w-full pr-10 text-slate-900 placeholder:text-slate-400 font-medium transition-all"
-                />
-                <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-                  <User size={16} />
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Usuario
+                </label>
+                <div className="relative">
+                  <User size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="Tu usuario"
+                    required
+                    className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#F95721] focus:border-transparent transition-all font-medium"
+                  />
                 </div>
               </div>
 
               {/* PIN Field */}
               <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-slate-700">
+                    PIN de acceso
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowForgotModal(true)}
+                    className="text-xs font-semibold text-[#F95721] hover:underline cursor-pointer"
+                  >
+                    ¿Olvidaste tu PIN?
+                  </button>
+                </div>
                 <div className="relative">
+                  <KeyRound size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                   <input
                     type={showPin ? 'text' : 'password'}
                     value={pinCode}
                     onChange={(e) => setPinCode(e.target.value)}
-                    placeholder="PIN de 4 dígitos"
+                    placeholder="Ingresa tu PIN de 4 dígitos"
                     maxLength={6}
                     required
-                    className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-orange-500 focus:outline-none w-full pr-10 text-slate-900 placeholder:text-slate-400 font-mono tracking-widest transition-all"
+                    className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-10 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#F95721] focus:border-transparent transition-all font-medium"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPin(!showPin)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 transition-colors p-1 cursor-pointer"
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer p-1"
                     title={showPin ? 'Ocultar PIN' : 'Mostrar PIN'}
                   >
                     {showPin ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 </div>
-
-                {/* Link "¿Olvidaste tu PIN?" aligned right in subtle red */}
-                <div className="flex justify-end mt-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setShowForgotModal(true)}
-                    className="text-red-500 text-xs font-medium hover:underline transition-colors cursor-pointer"
-                  >
-                    ¿Olvidaste tu PIN?
-                  </button>
-                </div>
               </div>
 
-              {/* Divider with "O" in the middle */}
-              <div className="relative flex items-center justify-center my-2">
-                <div className="border-t border-slate-200 w-full" />
-                <span className="bg-white px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                  O
-                </span>
-                <div className="border-t border-slate-200 w-full" />
-              </div>
-
-              {/* Secondary button: Acceder con Google (clean outlined style) */}
-              <button
-                type="button"
-                onClick={handleGoogleLogin}
-                disabled={isLoading}
-                className="w-full py-2.5 px-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm flex items-center justify-center gap-2.5 transition-all cursor-pointer active:scale-[0.99] disabled:opacity-50"
-              >
-                <GoogleIcon />
-                <span>Acceder con Google</span>
-              </button>
-
-              {/* Primary button: Iniciar Sesión → */}
+              {/* Iniciar sesión Button */}
               <button
                 type="submit"
                 disabled={isLoading}
-                className="bg-orange-600 hover:bg-orange-700 text-white font-semibold rounded-xl py-3 shadow-md shadow-orange-500/20 w-full flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-[0.99] disabled:opacity-50 mt-1"
+                className="w-full bg-[#F95721] hover:bg-[#e04815] active:scale-[0.99] text-white font-bold py-3 rounded-xl shadow-md shadow-orange-500/20 flex items-center justify-center gap-2 text-sm transition-all cursor-pointer disabled:opacity-50 mt-1"
               >
                 {isLoading ? (
                   <>
@@ -367,55 +312,137 @@ export default function SuperLogin({ onLoginSuccess }) {
                   </>
                 ) : (
                   <>
-                    <span>Iniciar Sesión →</span>
+                    <span>Iniciar sesión</span>
+                    <ArrowRight size={16} />
                   </>
                 )}
+              </button>
+
+              {/* Divider: o continúa con */}
+              <div className="relative flex items-center justify-center my-1.5">
+                <div className="border-t border-slate-200 w-full" />
+                <span className="bg-white px-3 text-[11px] text-slate-400 font-medium">
+                  o continúa con
+                </span>
+                <div className="border-t border-slate-200 w-full" />
+              </div>
+
+              {/* Continuar con Google */}
+              <button
+                type="button"
+                onClick={handleGoogleLogin}
+                disabled={isLoading}
+                className="w-full py-2.5 px-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs sm:text-sm flex items-center justify-center gap-2.5 transition-all cursor-pointer active:scale-[0.99] disabled:opacity-50"
+              >
+                <GoogleIcon />
+                <span>Continuar con Google</span>
               </button>
 
             </form>
           </div>
 
-          {/* Bottom text: "¿No tienes cuenta? Solicitar acceso" */}
-          <div className="text-center text-xs text-slate-400">
-            ¿No tienes cuenta?{' '}
-            <button
-              type="button"
-              onClick={() => alert('Para registrar nuevos usuarios, solicita al Super Administrador agregarte desde el panel de Usuarios & Roles.')}
-              className="text-orange-600 font-bold hover:underline cursor-pointer"
-            >
-              Solicitar acceso
-            </button>
+          {/* Bottom Bar: Plataforma protegida + Solicitar acceso */}
+          <div className="flex items-center justify-between text-[11px] pt-4 text-slate-400">
+            <div className="flex items-center gap-1.5 font-medium">
+              <Check size={13} className="text-emerald-500 stroke-[3]" />
+              <span>Plataforma protegida</span>
+            </div>
+
+            <div>
+              ¿No tienes cuenta?{' '}
+              <button
+                type="button"
+                onClick={() => setShowAccessModal(true)}
+                className="text-[#F95721] font-bold hover:underline cursor-pointer"
+              >
+                Solicitar acceso
+              </button>
+            </div>
           </div>
 
         </div>
 
       </div>
 
-      {/* Forgot PIN Modal */}
+      {/* Outside Footer */}
+      <div className="text-center text-xs text-slate-500 font-normal tracking-wide mt-4">
+        SISCONTROL ERP · Gestión inteligente para Importadora Rivero
+      </div>
+
+      {/* Modal: ¿Olvidaste tu PIN? */}
       {showForgotModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-sm bg-white rounded-3xl p-6 border border-slate-200 shadow-2xl text-center animate-fade-in">
-            <div className="w-12 h-12 rounded-2xl bg-orange-100 text-orange-600 flex items-center justify-center mx-auto mb-3">
-              <Lock size={22} />
-            </div>
-            <h3 className="text-base font-black text-slate-900">
-              Recuperación de PIN
-            </h3>
-            <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-              Los códigos PIN son configurados en el panel de <strong>Usuarios & Roles</strong>.
-            </p>
-            <div className="bg-slate-50 p-3 rounded-2xl mt-4 text-xs font-mono text-left border border-slate-200">
-              <div className="text-slate-500 text-[10px] uppercase font-bold mb-1">Usuarios registrados:</div>
-              <div className="font-semibold text-slate-800">• @abel (PIN: 2705)</div>
-              <div className="font-semibold text-slate-800">• @jaime (PIN: 1234)</div>
-              <div className="font-semibold text-slate-800">• @betho (PIN: 1234)</div>
-            </div>
+          <div className="w-full max-w-sm bg-white rounded-3xl p-6 border border-slate-200 shadow-2xl text-center animate-fade-in relative">
             <button
               type="button"
               onClick={() => setShowForgotModal(false)}
-              className="w-full mt-5 py-2.5 rounded-xl bg-slate-900 text-white font-bold text-xs cursor-pointer hover:bg-slate-800 transition-colors"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 rounded-full cursor-pointer"
+            >
+              <X size={18} />
+            </button>
+
+            <div className="w-12 h-12 rounded-2xl bg-orange-50 text-[#F95721] flex items-center justify-center mx-auto mb-3">
+              <Lock size={22} />
+            </div>
+
+            <h3 className="text-base font-extrabold text-slate-900">
+              Recuperación de PIN
+            </h3>
+            
+            <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+              Los códigos PIN se configuran y actualizan desde el panel de <strong>Usuarios & Roles</strong>.
+            </p>
+
+            <div className="bg-slate-50 p-3 rounded-2xl mt-4 text-xs font-mono text-left border border-slate-200">
+              <div className="text-slate-400 text-[10px] uppercase font-bold mb-1">
+                Colaboradores autorizados:
+              </div>
+              <div className="font-semibold text-slate-800 py-0.5">• @abel (PIN: 2705)</div>
+              <div className="font-semibold text-slate-800 py-0.5">• @jaime (PIN: 1234)</div>
+              <div className="font-semibold text-slate-800 py-0.5">• @betho (PIN: 1234)</div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowForgotModal(false)}
+              className="w-full mt-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs cursor-pointer transition-colors"
             >
               Entendido
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Solicitar Acceso */}
+      {showAccessModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-white rounded-3xl p-6 border border-slate-200 shadow-2xl text-center animate-fade-in relative">
+            <button
+              type="button"
+              onClick={() => setShowAccessModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 rounded-full cursor-pointer"
+            >
+              <X size={18} />
+            </button>
+
+            <div className="w-12 h-12 rounded-2xl bg-orange-50 text-[#F95721] flex items-center justify-center mx-auto mb-3">
+              <ShieldCheck size={24} />
+            </div>
+
+            <h3 className="text-base font-extrabold text-slate-900">
+              Solicitud de Acceso
+            </h3>
+            
+            <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+              Para habilitar una cuenta de colaborador o vendedor en <strong>SISCONTROL ERP</strong>, solicita el registro al Super Administrador en Cochabamba.
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setShowAccessModal(false)}
+              className="w-full mt-5 py-2.5 rounded-xl bg-[#F95721] hover:bg-[#e04815] text-white font-bold text-xs cursor-pointer transition-colors shadow-md shadow-orange-500/20"
+            >
+              Aceptar
             </button>
           </div>
         </div>
