@@ -89,34 +89,15 @@ export default function SuperLogin({ onLoginSuccess }) {
     }
   };
 
-  // Google / Quick SuperAdmin Login
-  const handleGoogleLogin = async () => {
-    setIsLoading(true);
-    setErrorMessage('');
-    try {
-      const res = await fetch('/api/users').then(r => r.json());
-      if (res.success && res.data && res.data.length > 0) {
-        const superAdmin = res.data.find(u => u.role === 'SUPER_ADMIN' && u.status === 'ACTIVO') || res.data[0];
-        setSuccessMessage(`¡Ingresando como ${superAdmin.name}!`);
-        localStorage.setItem('siscontrol_last_username', superAdmin.username);
-        setTimeout(() => {
-          onLoginSuccess(superAdmin);
-        }, 500);
-      } else {
-        setErrorMessage('No hay usuarios activos registrados en el sistema');
-      }
-    } catch (err) {
-      setErrorMessage('Error al acceder con Google: ' + err.message);
-    } finally {
-      setIsLoading(false);
-    }
+  const handleGoogleLogin = () => {
+    setErrorMessage('El acceso con Google todavía no está configurado. Ingresa con tu usuario y PIN.');
   };
 
   return (
-    <div className="min-h-screen w-full flex flex-col items-center justify-center p-4 sm:p-6 md:p-8 bg-[#0B1118] text-slate-900 font-sans select-none relative overflow-x-hidden">
+    <div className="min-h-screen w-full flex flex-col items-center justify-center p-3 sm:p-6 md:p-8 bg-[#0B1118] text-slate-900 font-sans relative overflow-x-hidden">
       
       {/* Main Card Container */}
-      <div className="relative z-10 w-full max-w-[1020px] bg-white rounded-[2.5rem] shadow-2xl shadow-black/60 overflow-hidden grid grid-cols-1 md:grid-cols-2 min-h-[620px] border border-slate-800/20">
+      <div className="relative z-10 w-full max-w-[1200px] bg-white rounded-[28px] shadow-2xl shadow-black/60 overflow-hidden grid grid-cols-1 md:grid-cols-[0.86fr_1fr] min-h-[620px] lg:min-h-[680px] border border-slate-800/20">
         
         {/* ============================================================== */}
         {/* Left Column (Warehouse & Logistics Visual Showcase)            */}
@@ -228,7 +209,7 @@ export default function SuperLogin({ onLoginSuccess }) {
 
             {/* Error Message */}
             {errorMessage && (
-              <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 text-xs flex items-center gap-2 font-semibold animate-fade-in">
+              <div role="alert" className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 text-xs flex items-center gap-2 font-semibold animate-fade-in">
                 <AlertCircle size={15} className="shrink-0 text-rose-500" />
                 <span>{errorMessage}</span>
               </div>
@@ -236,7 +217,7 @@ export default function SuperLogin({ onLoginSuccess }) {
 
             {/* Success Message */}
             {successMessage && (
-              <div className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs flex items-center gap-2 font-bold animate-fade-in">
+              <div role="status" className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs flex items-center gap-2 font-bold animate-fade-in">
                 <CheckCircle2 size={15} className="shrink-0 text-emerald-600" />
                 <span>{successMessage}</span>
               </div>
@@ -247,13 +228,15 @@ export default function SuperLogin({ onLoginSuccess }) {
               
               {/* Usuario Field */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                <label htmlFor="login-username" className="block text-xs font-bold text-slate-700 mb-1.5">
                   Usuario
                 </label>
                 <div className="relative">
-                  <User size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <User size={16} aria-hidden="true" className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                   <input
+                    id="login-username"
                     type="text"
+                    autoComplete="username"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     placeholder="Tu usuario"
@@ -266,7 +249,7 @@ export default function SuperLogin({ onLoginSuccess }) {
               {/* PIN Field */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-bold text-slate-700">
+                  <label htmlFor="login-pin" className="text-xs font-bold text-slate-700">
                     PIN de acceso
                   </label>
                   <button
@@ -278,9 +261,12 @@ export default function SuperLogin({ onLoginSuccess }) {
                   </button>
                 </div>
                 <div className="relative">
-                  <KeyRound size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <KeyRound size={16} aria-hidden="true" className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                   <input
+                    id="login-pin"
                     type={showPin ? 'text' : 'password'}
+                    inputMode="numeric"
+                    autoComplete="current-password"
                     value={pinCode}
                     onChange={(e) => setPinCode(e.target.value)}
                     placeholder="Ingresa tu PIN de 4 dígitos"
@@ -292,7 +278,7 @@ export default function SuperLogin({ onLoginSuccess }) {
                     type="button"
                     onClick={() => setShowPin(!showPin)}
                     className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer p-1"
-                    title={showPin ? 'Ocultar PIN' : 'Mostrar PIN'}
+                    aria-label={showPin ? 'Ocultar PIN' : 'Mostrar PIN'}
                   >
                     {showPin ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
@@ -342,7 +328,7 @@ export default function SuperLogin({ onLoginSuccess }) {
           </div>
 
           {/* Bottom Bar: Plataforma protegida + Solicitar acceso */}
-          <div className="flex items-center justify-between text-[11px] pt-4 text-slate-400">
+          <div className="flex flex-col gap-2 text-[11px] pt-4 text-slate-400 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-1.5 font-medium">
               <Check size={13} className="text-emerald-500 stroke-[3]" />
               <span>Plataforma protegida</span>
@@ -371,10 +357,11 @@ export default function SuperLogin({ onLoginSuccess }) {
 
       {/* Modal: ¿Olvidaste tu PIN? */}
       {showForgotModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div role="dialog" aria-modal="true" aria-labelledby="forgot-pin-title" className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-sm bg-white rounded-3xl p-6 border border-slate-200 shadow-2xl text-center animate-fade-in relative">
             <button
               type="button"
+              aria-label="Cerrar recuperación de PIN"
               onClick={() => setShowForgotModal(false)}
               className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 rounded-full cursor-pointer"
             >
@@ -385,22 +372,13 @@ export default function SuperLogin({ onLoginSuccess }) {
               <Lock size={22} />
             </div>
 
-            <h3 className="text-base font-extrabold text-slate-900">
+            <h3 id="forgot-pin-title" className="text-base font-extrabold text-slate-900">
               Recuperación de PIN
             </h3>
             
             <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-              Los códigos PIN se configuran y actualizan desde el panel de <strong>Usuarios & Roles</strong>.
+              Solicita al administrador del sistema que restablezca tu PIN. Nunca compartas tus credenciales.
             </p>
-
-            <div className="bg-slate-50 p-3 rounded-2xl mt-4 text-xs font-mono text-left border border-slate-200">
-              <div className="text-slate-400 text-[10px] uppercase font-bold mb-1">
-                Colaboradores autorizados:
-              </div>
-              <div className="font-semibold text-slate-800 py-0.5">• @abel (PIN: 2705)</div>
-              <div className="font-semibold text-slate-800 py-0.5">• @jaime (PIN: 1234)</div>
-              <div className="font-semibold text-slate-800 py-0.5">• @betho (PIN: 1234)</div>
-            </div>
 
             <button
               type="button"
@@ -415,10 +393,11 @@ export default function SuperLogin({ onLoginSuccess }) {
 
       {/* Modal: Solicitar Acceso */}
       {showAccessModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div role="dialog" aria-modal="true" aria-labelledby="access-request-title" className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-sm bg-white rounded-3xl p-6 border border-slate-200 shadow-2xl text-center animate-fade-in relative">
             <button
               type="button"
+              aria-label="Cerrar solicitud de acceso"
               onClick={() => setShowAccessModal(false)}
               className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 rounded-full cursor-pointer"
             >
@@ -429,7 +408,7 @@ export default function SuperLogin({ onLoginSuccess }) {
               <ShieldCheck size={24} />
             </div>
 
-            <h3 className="text-base font-extrabold text-slate-900">
+            <h3 id="access-request-title" className="text-base font-extrabold text-slate-900">
               Solicitud de Acceso
             </h3>
             
