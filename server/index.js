@@ -3299,6 +3299,208 @@ app.delete('/api/containers/items/:itemId', (req, res) => {
 });
 
 // =============================================================================
+// USERS & ROLES MANAGEMENT (Gestión de Trabajadores y Roles)
+// =============================================================================
+
+// GET all users
+app.get('/api/users', (req, res) => {
+  try {
+    const users = db.prepare(`
+      SELECT id, name, username, pin_code, role, phone, email, avatar_color, status, notes, created_at, updated_at
+      FROM users
+      ORDER BY id ASC
+    `).all();
+    res.json({ success: true, data: users });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET single user
+app.get('/api/users/:id', (req, res) => {
+  try {
+    const user = db.prepare(`
+      SELECT id, name, username, pin_code, role, phone, email, avatar_color, status, notes, created_at
+      FROM users WHERE id = ?
+    `).get(req.params.id);
+    if (!user) return res.status(404).json({ success: false, error: 'Usuario no encontrado' });
+    res.json({ success: true, data: user });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST create user
+app.post('/api/users', (req, res) => {
+  try {
+    const { name, username, pin_code, role, phone, email, avatar_color, status, notes } = req.body;
+    
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, error: 'El nombre completo es requerido' });
+    }
+    if (!username || !username.trim()) {
+      return res.status(400).json({ success: false, error: 'El nombre de usuario es requerido' });
+    }
+
+    const cleanUsername = username.trim().toLowerCase();
+
+    // Check unique username
+    const existing = db.prepare('SELECT id FROM users WHERE LOWER(username) = ?').get(cleanUsername);
+    if (existing) {
+      return res.status(400).json({ success: false, error: `El nombre de usuario '${cleanUsername}' ya está registrado` });
+    }
+
+    const validRoles = ['SUPER_ADMIN', 'ADMIN', 'VENTAS', 'ALMACEN', 'CAJA'];
+    const cleanRole = validRoles.includes(role) ? role : 'VENTAS';
+    const cleanPin = pin_code && String(pin_code).trim() ? String(pin_code).trim() : '1234';
+    const cleanStatus = status === 'INACTIVO' ? 'INACTIVO' : 'ACTIVO';
+    const cleanColor = avatar_color || '#EA580C';
+
+    const result = db.prepare(`
+      INSERT INTO users (name, username, pin_code, role, phone, email, avatar_color, status, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      name.trim(),
+      cleanUsername,
+      cleanPin,
+      cleanRole,
+      phone ? phone.trim() : null,
+      email ? email.trim() : null,
+      cleanColor,
+      cleanStatus,
+      notes ? notes.trim() : null
+    );
+
+    const newUser = db.prepare('SELECT * FROM users WHERE id = ?').get(result.lastInsertRowid);
+    res.json({ success: true, data: newUser, message: `Usuario ${newUser.name} creado exitosamente` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PUT update user
+app.put('/api/users/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, username, pin_code, role, phone, email, avatar_color, status, notes } = req.body;
+
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+    if (!user) return res.status(404).json({ success: false, error: 'Usuario no encontrado' });
+
+    if (username && username.trim().toLowerCase() !== user.username.toLowerCase()) {
+      const existing = db.prepare('SELECT id FROM users WHERE LOWER(username) = ? AND id != ?').get(username.trim().toLowerCase(), id);
+      if (existing) {
+        return res.status(400).json({ success: false, error: `El nombre de usuario '${username}' ya está en uso` });
+      }
+    }
+
+    // Protect last active super admin from being set inactive or downgraded
+    if (user.role === 'SUPER_ADMIN' && (status === 'INACTIVO' || (role && role !== 'SUPER_ADMIN'))) {
+      const activeSuperCount = db.prepare("SELECT COUNT(*) as c FROM users WHERE role = 'SUPER_ADMIN' AND status = 'ACTIVO' AND id != ?").get(id).c;
+      if (activeSuperCount === 0) {
+        return res.status(400).json({ success: false, error: 'No puedes desactivar ni degradar al único Super Administrador activo del sistema' });
+      }
+    }
+
+    db.prepare(`
+      UPDATE users SET
+        name = COALESCE(?, name),
+        username = COALESCE(?, username),
+        pin_code = COALESCE(?, pin_code),
+        role = COALESCE(?, role),
+        phone = COALESCE(?, phone),
+        email = COALESCE(?, email),
+        avatar_color = COALESCE(?, avatar_color),
+        status = COALESCE(?, status),
+        notes = COALESCE(?, notes),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(
+      name ? name.trim() : user.name,
+      username ? username.trim().toLowerCase() : user.username,
+      pin_code ? String(pin_code).trim() : user.pin_code,
+      role || user.role,
+      phone !== undefined ? phone : user.phone,
+      email !== undefined ? email : user.email,
+      avatar_color || user.avatar_color,
+      status || user.status,
+      notes !== undefined ? notes : user.notes,
+      id
+    );
+
+    const updated = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+    res.json({ success: true, data: updated, message: `Usuario ${updated.name} actualizado` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE user
+app.delete('/api/users/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+    if (!user) return res.status(404).json({ success: false, error: 'Usuario no encontrado' });
+
+    // Protect last active super admin
+    if (user.role === 'SUPER_ADMIN') {
+      const activeSuperCount = db.prepare("SELECT COUNT(*) as c FROM users WHERE role = 'SUPER_ADMIN' AND id != ?").get(id).c;
+      if (activeSuperCount === 0) {
+        return res.status(400).json({ success: false, error: 'No se puede eliminar el único Super Administrador del sistema' });
+      }
+    }
+
+    db.prepare('DELETE FROM users WHERE id = ?').run(id);
+    res.json({ success: true, message: `Usuario ${user.name} eliminado` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST login / switch user verification
+app.post('/api/users/login', (req, res) => {
+  try {
+    const { userId, username, pin_code } = req.body;
+    let user = null;
+
+    if (userId) {
+      user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+    } else if (username) {
+      user = db.prepare('SELECT * FROM users WHERE LOWER(username) = ?').get(String(username).trim().toLowerCase());
+    }
+
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'Usuario no encontrado en el sistema' });
+    }
+
+    if (user.status !== 'ACTIVO') {
+      return res.status(403).json({ success: false, error: 'Esta cuenta de usuario se encuentra inactiva' });
+    }
+
+    // Require and verify 4-digit PIN
+    if (!pin_code || String(pin_code).trim() !== String(user.pin_code)) {
+      return res.status(401).json({ success: false, error: 'Código PIN incorrecto. Inténtalo de nuevo.' });
+    }
+
+    res.json({ 
+      success: true, 
+      data: {
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        role: user.role,
+        avatar_color: user.avatar_color,
+        phone: user.phone,
+        status: user.status
+      },
+      message: `¡Bienvenido al sistema, ${user.name}!` 
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// =============================================================================
 
 app.listen(PORT, () => {
   console.log(`🚀 SISCONTROL API Server running on http://localhost:${PORT}`);

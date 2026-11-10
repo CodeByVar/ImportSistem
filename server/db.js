@@ -249,7 +249,44 @@ export function initDatabase() {
       supervisor TEXT DEFAULT 'TITO',
       notes TEXT
     );
+
+    -- Tabla de Usuarios y Roles de Trabajadores
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      username TEXT UNIQUE NOT NULL,
+      pin_code TEXT NOT NULL DEFAULT '1234',
+      role TEXT NOT NULL DEFAULT 'SUPER_ADMIN', -- 'SUPER_ADMIN', 'ADMIN', 'VENTAS', 'ALMACEN', 'CAJA'
+      phone TEXT,
+      email TEXT,
+      avatar_color TEXT DEFAULT '#EA580C',
+      status TEXT NOT NULL DEFAULT 'ACTIVO', -- 'ACTIVO', 'INACTIVO'
+      notes TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+    CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
   `);
+
+  // Insertar Super Usuario inicial si la tabla está vacía
+  const userCount = db.prepare('SELECT count(*) as c FROM users').get().c;
+  if (userCount === 0) {
+    db.prepare(`
+      INSERT INTO users (name, username, pin_code, role, phone, avatar_color, status, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'Carlos Rivero V.',
+      'carlos',
+      '1234',
+      'SUPER_ADMIN',
+      '+591 70000000',
+      '#EA580C',
+      'ACTIVO',
+      'Super Usuario Administrador Principal - Acceso total al sistema'
+    );
+  }
 
   // Insertar cliente inicial si la tabla está vacía
   const customerCount = db.prepare('SELECT count(*) as c FROM customers').get().c;

@@ -20,6 +20,8 @@ import CustomersModal from './components/CustomersModal';
 import AddPaymentModal from './components/AddPaymentModal';
 import BatchLotImportModal from './components/BatchLotImportModal';
 import ContainerPrelistaModal from './components/ContainerPrelistaModal';
+import UsersModal from './components/UsersModal';
+import SuperLogin from './components/SuperLogin';
 import { 
   LayoutDashboard, 
   Package, 
@@ -76,12 +78,63 @@ export default function App() {
   const [editNoteData, setEditNoteData] = useState(null);
   const [notesRefreshTrigger, setNotesRefreshTrigger] = useState(0);
 
+  // Authentication & Session State
+  const [authSession, setAuthSession] = useState(() => {
+    try {
+      const saved = localStorage.getItem('siscontrol_auth_session');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+
+  // User & Roles states (Initialized from auth session or active user)
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const savedAuth = localStorage.getItem('siscontrol_auth_session');
+      if (savedAuth) {
+        const parsed = JSON.parse(savedAuth);
+        if (parsed && parsed.user) return parsed.user;
+      }
+      const saved = localStorage.getItem('siscontrol_active_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+
+  const [isUsersModalOpen, setIsUsersModalOpen] = useState(false);
+
   // Success toast
   const [toastMessage, setToastMessage] = useState('');
 
   const showToast = (msg) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(''), 4000);
+  };
+
+  const handleLoginSuccess = (user) => {
+    const session = { user, loginAt: new Date().toISOString() };
+    setAuthSession(session);
+    setCurrentUser(user);
+    localStorage.setItem('siscontrol_auth_session', JSON.stringify(session));
+    localStorage.setItem('siscontrol_active_user', JSON.stringify(user));
+    
+    // Auto-direct to the most relevant view according to role
+    if (user.role === 'ALMACEN') {
+      setActiveTab('weekly');
+    } else if (user.role === 'VENTAS') {
+      setActiveTab('notes');
+    } else {
+      setActiveTab('dashboard');
+    }
+
+    showToast(`¡Sesión iniciada! Bienvenido, ${user.name}`);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('siscontrol_auth_session');
+    setAuthSession(null);
   };
 
   const toggleTheme = () => {
@@ -152,6 +205,11 @@ export default function App() {
     }
   };
 
+  // If not authenticated, display Super Login
+  if (!authSession) {
+    return <SuperLogin onLoginSuccess={handleLoginSuccess} />;
+  }
+
   return (
     <div className="h-screen w-full bg-slate-100/70 dark:bg-slate-950 flex flex-row text-slate-900 dark:text-slate-100 transition-colors duration-200 antialiased overflow-hidden">
       {/* Toast Notification */}
@@ -171,6 +229,8 @@ export default function App() {
           toggleTheme={toggleTheme}
           onOpenCustomers={() => setIsCustomersModalOpen(true)}
           onOpenImporter={() => setIsImporterOpen(true)}
+          onOpenUsersModal={() => setIsUsersModalOpen(true)}
+          onLogout={handleLogout}
         />
       </div>
 
@@ -183,6 +243,9 @@ export default function App() {
             setActiveTab={setActiveTab}
             theme={theme}
             toggleTheme={toggleTheme}
+            currentUser={currentUser}
+            onOpenUsersModal={() => setIsUsersModalOpen(true)}
+            onLogout={handleLogout}
             onOpenNewNote={() => {
               setEditNoteData(null);
               setIsNewNoteModalOpen(true);
@@ -192,8 +255,8 @@ export default function App() {
         </div>
 
         {/* 3. SCROLLABLE MIDDLE CONTENT (SOLO ESTO SE MUEVE CON EL SCROLL - ESTILO DRIVE) */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden pt-1 pb-10 scroll-smooth">
-          <main className="bg-white dark:bg-slate-900 rounded-3xl sm:rounded-[36px] p-7 sm:p-10 lg:p-12 shadow-[0_20px_50px_rgba(0,0,0,0.07)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.45)] border-2 border-slate-200/90 dark:border-slate-800 transition-all mb-4">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden pt-1 pb-8 scroll-smooth">
+          <main className="bg-white dark:bg-slate-900 rounded-3xl p-5 sm:p-7 lg:p-8 shadow-[0_10px_35px_rgba(0,0,0,0.04)] dark:shadow-[0_10px_35px_rgba(0,0,0,0.3)] border border-slate-200/80 dark:border-slate-800 transition-all mb-4">
             {activeTab === 'dashboard' && (
               <ModernDashboard
                 stats={stats}
@@ -411,6 +474,21 @@ export default function App() {
           fetchData();
           setNotesRefreshTrigger(prev => prev + 1);
           showToast('Abono registrado con éxito');
+        }}
+      />
+
+      {/* 9. Workers & Roles Management Modal */}
+      <UsersModal
+        isOpen={isUsersModalOpen}
+        onClose={() => setIsUsersModalOpen(false)}
+        currentUser={currentUser}
+        onSwitchUser={(user) => {
+          const session = { user, loginAt: new Date().toISOString() };
+          setAuthSession(session);
+          setCurrentUser(user);
+          localStorage.setItem('siscontrol_auth_session', JSON.stringify(session));
+          localStorage.setItem('siscontrol_active_user', JSON.stringify(user));
+          showToast(`Sesión cambiada a: ${user.name} (${user.role})`);
         }}
       />
     </div>

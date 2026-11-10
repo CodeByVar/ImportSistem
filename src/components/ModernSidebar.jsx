@@ -8,7 +8,8 @@ import {
   Ship, 
   Users, 
   Sliders, 
-  LogOut 
+  LogOut,
+  ShieldCheck
 } from 'lucide-react';
 
 export default function ModernSidebar({ 
@@ -17,7 +18,9 @@ export default function ModernSidebar({
   theme, 
   toggleTheme, 
   onOpenCustomers,
-  onOpenImporter
+  onOpenImporter,
+  onOpenUsersModal,
+  onLogout
 }) {
   const navItems = [
     { key: 'dashboard', label: 'General', icon: LayoutDashboard },
@@ -74,6 +77,19 @@ export default function ModernSidebar({
               Cartera de Clientes
             </span>
           </button>
+
+          {/* Workers & Roles management button */}
+          <button
+            type="button"
+            onClick={onOpenUsersModal}
+            title="Gestión de Trabajadores & Roles"
+            className="w-10 h-10 rounded-xl sm:rounded-full flex items-center justify-center text-slate-400 hover:text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-950/40 transition-all duration-200 relative group cursor-pointer"
+          >
+            <ShieldCheck size={19} strokeWidth={1.8} />
+            <span className="pointer-events-none absolute left-14 scale-0 group-hover:scale-100 transition-all origin-left bg-orange-600 text-white text-xs font-bold px-2.5 py-1.5 rounded-lg whitespace-nowrap shadow-xl z-50">
+              Usuarios & Roles
+            </span>
+          </button>
         </nav>
 
         {/* Subtle Divider */}
@@ -96,16 +112,18 @@ export default function ModernSidebar({
           <button 
             type="button"
             onClick={() => {
-              if (window.confirm('¿Deseas recargar la aplicación para sincronizar los datos?')) {
+              if (onLogout) {
+                onLogout();
+              } else if (window.confirm('¿Deseas recargar la aplicación para sincronizar los datos?')) {
                 window.location.reload();
               }
             }}
-            title="Recargar Sistema"
+            title="Bloquear Terminal / Cerrar Sesión"
             className="w-10 h-10 rounded-xl sm:rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-all group relative cursor-pointer"
           >
             <LogOut size={18} strokeWidth={1.8} />
             <span className="pointer-events-none absolute left-14 scale-0 group-hover:scale-100 transition-all origin-left bg-rose-600 text-white text-xs font-semibold px-2.5 py-1.5 rounded-lg whitespace-nowrap shadow-xl z-50">
-              Recargar
+              Bloquear / Salir
             </span>
           </button>
         </div>

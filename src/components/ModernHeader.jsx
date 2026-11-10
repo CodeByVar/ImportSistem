@@ -5,7 +5,8 @@ import {
   HelpCircle, 
   ChevronDown,
   Sun,
-  Moon
+  Moon,
+  Lock
 } from 'lucide-react';
 
 export default function ModernHeader({ 
@@ -14,8 +15,37 @@ export default function ModernHeader({
   theme,
   toggleTheme,
   onOpenNewNote,
-  onOpenCustomers 
+  onOpenCustomers,
+  currentUser,
+  onOpenUsersModal,
+  onLogout
 }) {
+  // Helper for initials
+  const getInitials = (name) => {
+    if (!name) return 'CR';
+    const parts = name.trim().split(' ');
+    if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    return name.substring(0, 2).toUpperCase();
+  };
+
+  // Helper for role label
+  const getRoleLabel = (role) => {
+    switch (role) {
+      case 'SUPER_ADMIN': return 'Super Administrador';
+      case 'ADMIN': return 'Administrador';
+      case 'VENTAS': return 'Ventas & Despachos';
+      case 'ALMACEN': return 'Almacén & Logística';
+      case 'CAJA': return 'Caja & Cobranzas';
+      default: return 'Gerente General';
+    }
+  };
+
+  const activeUser = currentUser || {
+    id: 1,
+    name: 'Carlos Rivero V.',
+    role: 'SUPER_ADMIN',
+    avatar_color: '#EA580C'
+  };
   return (
     <header 
       className="w-full bg-white dark:bg-slate-900 rounded-2xl sm:rounded-full shadow-[0_10px_35px_rgba(0,0,0,0.08)] dark:shadow-[0_10px_35px_rgba(0,0,0,0.4)] border-2 border-slate-200/90 dark:border-slate-800 px-8 sm:px-14 lg:px-18 py-3.5 min-h-[72px] flex items-center justify-between gap-6 transition-all"
@@ -84,23 +114,41 @@ export default function ModernHeader({
 
         {/* User Profile Capsule con Margen Real y Totalmente Separado del Borde */}
         <div 
-          onClick={onOpenCustomers}
-          title="Perfil de Usuario"
-          className="flex items-center gap-3 pl-2 pr-4.5 py-1.5 rounded-full bg-slate-50 dark:bg-slate-800/90 border-2 border-slate-200/90 dark:border-slate-700 hover:border-[#EA580C]/60 hover:bg-slate-100 dark:hover:bg-slate-700/80 transition-all cursor-pointer select-none shadow-xs ml-1"
+          onClick={onOpenUsersModal || onOpenCustomers}
+          title={`Usuario: ${activeUser.name} (${getRoleLabel(activeUser.role)}) - Clic para administrar trabajadores y roles`}
+          className="flex items-center gap-3 pl-2 pr-4.5 py-1.5 rounded-full bg-slate-50 dark:bg-slate-800/90 border-2 border-slate-200/90 dark:border-slate-700 hover:border-[#EA580C]/60 hover:bg-slate-100 dark:hover:bg-slate-700/80 transition-all cursor-pointer select-none shadow-xs ml-1 group"
         >
-          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-orange-500 to-[#EA580C] text-white font-black text-xs flex items-center justify-center shadow-xs shrink-0">
-            CR
+          <div 
+            style={{ backgroundColor: activeUser.avatar_color || '#EA580C' }}
+            className="w-9 h-9 rounded-full text-white font-black text-xs flex items-center justify-center shadow-xs shrink-0 ring-2 ring-white/20"
+          >
+            {getInitials(activeUser.name)}
           </div>
           <div className="flex flex-col text-left leading-tight hidden lg:flex">
-            <span className="text-xs font-black text-slate-900 dark:text-white">
-              Carlos Rivero V.
+            <span className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+              {activeUser.name}
+              {activeUser.role === 'SUPER_ADMIN' && (
+                <span className="text-[10px]" title="Super Administrador">👑</span>
+              )}
             </span>
-            <span className="text-[10px] font-bold text-slate-400 mt-0.5">
-              Gerente General
+            <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400 mt-0.5">
+              {getRoleLabel(activeUser.role)}
             </span>
           </div>
-          <ChevronDown size={14} className="text-slate-400 shrink-0" />
+          <ChevronDown size={14} className="text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-200 shrink-0 transition-transform group-hover:translate-y-0.5" />
         </div>
+
+        {/* Lock Terminal / Logout Button */}
+        {onLogout && (
+          <button 
+            type="button"
+            title="Bloquear terminal / Cerrar sesión"
+            onClick={onLogout}
+            className="w-9.5 h-9.5 rounded-full bg-slate-50 dark:bg-slate-800 border-2 border-slate-200/90 dark:border-slate-700 flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:border-rose-400/50 transition-colors cursor-pointer shadow-2xs"
+          >
+            <Lock size={15} strokeWidth={2.2} />
+          </button>
+        )}
       </div>
     </header>
   );
