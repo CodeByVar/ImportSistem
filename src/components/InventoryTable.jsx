@@ -20,8 +20,14 @@ export default function InventoryTable({
   products = [], 
   onOpenNewMovement, 
   onEditProduct,
-  initialFilter = 'all'
+  initialFilter = 'all',
+  userRole = 'SUPER_ADMIN'   // ← recibe el rol para controlar visibilidad
 }) {
+  // ——— Flags de visibilidad según rol ———
+  const canSeeCosts  = ['SUPER_ADMIN', 'ADMIN'].includes(userRole);
+  const canSeePrices = ['SUPER_ADMIN', 'ADMIN', 'VENTAS', 'CAJA'].includes(userRole);
+  const canSeeWholesaleOnly = userRole === 'ALMACEN'; // solo precio mayor, sin costo
+  const isAlmacen    = userRole === 'ALMACEN';
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedBrand, setSelectedBrand] = useState('Todas');
   const [selectedCategory, setSelectedCategory] = useState('Todas');
@@ -47,6 +53,11 @@ export default function InventoryTable({
     const matchesBrand = selectedBrand === 'Todas' || p.brand === selectedBrand;
     const matchesCategory = selectedCategory === 'Todas' || p.category === selectedCategory;
 
+    // ALMACEN: solo ve productos con stock disponible > 0
+    const matchesRoleFilter = isAlmacen
+      ? (Number(p.current_stock) || 0) > 0
+      : true;
+
     let matchesStock = true;
     if (stockStatusFilter === 'critical') {
       matchesStock = p.current_stock <= p.min_stock;
@@ -54,7 +65,7 @@ export default function InventoryTable({
       matchesStock = p.current_stock > p.min_stock;
     }
 
-    return matchesSearch && matchesBrand && matchesCategory && matchesStock;
+    return matchesSearch && matchesBrand && matchesCategory && matchesStock && matchesRoleFilter;
   });
 
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / itemsPerPage));
@@ -139,13 +150,15 @@ export default function InventoryTable({
           </div>
           <div>
             <h3 className="font-heading" style={{ fontSize: '1.3rem', fontWeight: 800, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              Catálogo de Inventario Multi-Marca
+              {isAlmacen ? 'Stock Disponible en Bodega' : 'Catálogo de Inventario Multi-Marca'}
               <span className="badge badge-indigo" style={{ fontSize: '0.72rem' }}>
-                {products.length.toLocaleString()} Productos
+                {isAlmacen ? `${filteredProducts.length.toLocaleString()} con Stock` : `${products.length.toLocaleString()} Productos`}
               </span>
             </h3>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              Control físico por cajas y sueltas, bodegas, costos FOB, márgenes y listas de precios al por mayor
+              {isAlmacen
+                ? 'Productos disponibles en bodega con stock actual · Solo precio por mayor visible'
+                : 'Control físico por cajas y sueltas, bodegas, costos FOB, márgenes y listas de precios'}
             </p>
           </div>
         </div>
@@ -272,13 +285,13 @@ export default function InventoryTable({
               <th>SKU / Código</th>
               <th>Producto & Marca / Bodega</th>
               <th>Rubro</th>
-              <th style={{ textAlign: 'right' }}>Costo FOB ($)</th>
-              <th style={{ textAlign: 'right' }}>Costo Neto Landed ($)</th>
-              <th style={{ textAlign: 'right' }}>Precio Mayor (Bs)</th>
-              <th style={{ textAlign: 'right' }}>Precio Caja (Bs)</th>
-              <th style={{ textAlign: 'right' }}>Precio Especial (Bs)</th>
+              {canSeeCosts && <th style={{ textAlign: 'right' }}>Costo FOB ($)</th>}
+              {canSeeCosts && <th style={{ textAlign: 'right' }}>Costo Neto Landed ($)</th>}
+              {(canSeePrices || canSeeWholesaleOnly) && <th style={{ textAlign: 'right' }}>Precio Mayor (Bs)</th>}
+              {canSeePrices && !canSeeWholesaleOnly && <th style={{ textAlign: 'right' }}>Precio Caja (Bs)</th>}
+              {canSeePrices && !canSeeWholesaleOnly && <th style={{ textAlign: 'right' }}>Precio Especial (Bs)</th>}
               <th style={{ width: '190px' }}>Stock Físico & Disp.</th>
-              <th style={{ width: '220px' }}>📦 Reservas (Cajas / Cliente)</th>
+              {!isAlmacen && <th style={{ width: '220px' }}>📦 Reservas (Cajas / Cliente)</th>}
               <th style={{ textAlign: 'center', width: '90px' }}>Acción</th>
             </tr>
           </thead>
@@ -325,30 +338,40 @@ export default function InventoryTable({
                       </span>
                     </td>
 
-                    {/* FOB Price */}
-                    <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                      ${Number(p.fob_price || 0).toFixed(2)}
-                    </td>
+                    {/* FOB Price — solo si puede ver costos */}
+                    {canSeeCosts && (
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                        ${Number(p.fob_price || 0).toFixed(2)}
+                      </td>
+                    )}
 
-                    {/* Landed Cost ($) */}
-                    <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#f8fafc' }}>
-                      ${Number(p.landed_cost || p.fob_price || 0).toFixed(2)}
-                    </td>
+                    {/* Landed Cost — solo si puede ver costos */}
+                    {canSeeCosts && (
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#f8fafc' }}>
+                        ${Number(p.landed_cost || p.fob_price || 0).toFixed(2)}
+                      </td>
+                    )}
 
-                    {/* Sale Price - Wholesale (Bs) */}
-                    <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#38bdf8', fontSize: '0.9rem' }}>
-                      Bs {Number(mayorPrice || 0).toFixed(2)}
-                    </td>
+                    {/* Precio Mayor — visible para todos los que tienen acceso */}
+                    {(canSeePrices || canSeeWholesaleOnly) && (
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#38bdf8', fontSize: '0.9rem' }}>
+                        Bs {Number(mayorPrice || 0).toFixed(2)}
+                      </td>
+                    )}
 
-                    {/* Box Price (Bs) */}
-                    <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: '0.82rem', color: p.box_price > 0 ? '#34d399' : 'var(--text-muted)' }}>
-                      {p.box_price > 0 ? `Bs ${Number(p.box_price).toFixed(2)}` : '-'}
-                    </td>
+                    {/* Precio Caja — solo si puede ver todos los precios */}
+                    {canSeePrices && !canSeeWholesaleOnly && (
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: '0.82rem', color: p.box_price > 0 ? '#34d399' : 'var(--text-muted)' }}>
+                        {p.box_price > 0 ? `Bs ${Number(p.box_price).toFixed(2)}` : '-'}
+                      </td>
+                    )}
 
-                    {/* Special Price (Bs) */}
-                    <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: '0.82rem', color: p.special_price > 0 ? '#fbbf24' : 'var(--text-muted)' }}>
-                      {p.special_price > 0 ? `Bs ${Number(p.special_price).toFixed(2)}` : '-'}
-                    </td>
+                    {/* Precio Especial — solo si puede ver todos los precios */}
+                    {canSeePrices && !canSeeWholesaleOnly && (
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: '0.82rem', color: p.special_price > 0 ? '#fbbf24' : 'var(--text-muted)' }}>
+                        {p.special_price > 0 ? `Bs ${Number(p.special_price).toFixed(2)}` : '-'}
+                      </td>
+                    )}
 
                     {/* Stock Físico vs Disponible */}
                     <td>
@@ -380,58 +403,66 @@ export default function InventoryTable({
                       </div>
                     </td>
 
-                    {/* Columna Reservas (Cajas/Cliente) */}
-                    <td>
-                      {reservedBoxes > 0 || reservedUnits > 0 ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                          <div>
-                            <span className="badge badge-amber" style={{ fontSize: '0.72rem', padding: '2px 8px', fontWeight: 700 }}>
-                              📌 {reservedBoxes} cjs ({formatNumber(reservedUnits)} u)
-                            </span>
-                          </div>
-                          {p.reserved_clients_summary && (
-                            <div 
-                              style={{ 
-                                fontSize: '0.72rem', 
-                                color: '#fbbf24', 
-                                lineHeight: '1.25',
-                                maxWidth: '210px',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap'
-                              }} 
-                              title={`Clientes con reserva: ${p.reserved_clients_summary}`}
-                            >
-                              👤 {p.reserved_clients_summary}
+                    {/* Reservas — oculto para ALMACEN */}
+                    {!isAlmacen && (
+                      <td>
+                        {reservedBoxes > 0 || reservedUnits > 0 ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                            <div>
+                              <span className="badge badge-amber" style={{ fontSize: '0.72rem', padding: '2px 8px', fontWeight: 700 }}>
+                                📌 {reservedBoxes} cjs ({formatNumber(reservedUnits)} u)
+                              </span>
                             </div>
-                          )}
-                        </div>
-                      ) : (
-                        <span style={{ color: 'var(--text-muted)', fontSize: '0.74rem', fontStyle: 'italic' }}>
-                          Sin reservas
-                        </span>
-                      )}
-                    </td>
+                            {p.reserved_clients_summary && (
+                              <div 
+                                style={{ 
+                                  fontSize: '0.72rem', 
+                                  color: '#fbbf24', 
+                                  lineHeight: '1.25',
+                                  maxWidth: '210px',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap'
+                                }} 
+                                title={`Clientes con reserva: ${p.reserved_clients_summary}`}
+                              >
+                                👤 {p.reserved_clients_summary}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)', fontSize: '0.74rem', fontStyle: 'italic' }}>
+                            Sin reservas
+                          </span>
+                        )}
+                      </td>
+                    )}
 
                     {/* Quick action buttons */}
                     <td style={{ textAlign: 'center' }}>
                       <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-                        <button
-                          onClick={() => onOpenNewMovement('ENTRADA', p)}
-                          className="btn btn-secondary"
-                          style={{ padding: '5px 7px', borderRadius: '6px' }}
-                          title="Registrar Entrada / Recepción"
-                        >
-                          <ArrowDownLeft size={13} color="#34d399" />
-                        </button>
-                        <button
-                          onClick={() => onOpenNewMovement('SALIDA', p)}
-                          className="btn btn-secondary"
-                          style={{ padding: '5px 7px', borderRadius: '6px' }}
-                          title="Registrar Venta / Salida"
-                        >
-                          <ArrowUpRight size={13} color="#38bdf8" />
-                        </button>
+                        {/* Entrada: solo para roles que pueden editar movimientos */}
+                        {['SUPER_ADMIN', 'ADMIN', 'ALMACEN'].includes(userRole) && (
+                          <button
+                            onClick={() => onOpenNewMovement('ENTRADA', p)}
+                            className="btn btn-secondary"
+                            style={{ padding: '5px 7px', borderRadius: '6px' }}
+                            title="Registrar Entrada / Recepción"
+                          >
+                            <ArrowDownLeft size={13} color="#34d399" />
+                          </button>
+                        )}
+                        {/* Salida: para roles que pueden despachar */}
+                        {['SUPER_ADMIN', 'ADMIN', 'ALMACEN', 'VENTAS'].includes(userRole) && (
+                          <button
+                            onClick={() => onOpenNewMovement('SALIDA', p)}
+                            className="btn btn-secondary"
+                            style={{ padding: '5px 7px', borderRadius: '6px' }}
+                            title="Registrar Venta / Salida"
+                          >
+                            <ArrowUpRight size={13} color="#38bdf8" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

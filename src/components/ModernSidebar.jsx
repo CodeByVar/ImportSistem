@@ -11,6 +11,17 @@ import {
   LogOut,
   ShieldCheck
 } from 'lucide-react';
+import { getPermissions } from '../config/permissions';
+
+// Todas las pestañas posibles del sistema
+const ALL_NAV_ITEMS = [
+  { key: 'dashboard',   label: 'General / Dashboard',          icon: LayoutDashboard },
+  { key: 'notes',       label: 'Notas de Despacho & Venta',    icon: FileText },
+  { key: 'inventory',   label: 'Catálogo & Stock',             icon: Package },
+  { key: 'weekly',      label: 'Plantilla de Despachos Semanal (L-S)', icon: CalendarDays },
+  { key: 'movements',   label: 'Kardex / Movimientos',         icon: History },
+  { key: 'containers',  label: 'Embarques & Contenedores',     icon: Ship },
+];
 
 export default function ModernSidebar({ 
   activeTab, 
@@ -20,16 +31,20 @@ export default function ModernSidebar({
   onOpenCustomers,
   onOpenImporter,
   onOpenUsersModal,
-  onLogout
+  onLogout,
+  currentUser     // ← recibe el usuario actual para filtrar por rol
 }) {
-  const navItems = [
-    { key: 'dashboard', label: 'General', icon: LayoutDashboard },
-    { key: 'notes', label: 'Notas de Despacho & Venta', icon: FileText },
-    { key: 'inventory', label: 'Catálogo & Stock', icon: Package },
-    { key: 'weekly', label: 'Planilla Despacho Diario', icon: CalendarDays },
-    { key: 'movements', label: 'Kardex / Movimientos', icon: History },
-    { key: 'containers', label: 'Embarques & Contenedores', icon: Ship },
-  ];
+  const perms = getPermissions(currentUser?.role);
+
+  // Filtra solo las pestañas permitidas para el rol
+  const navItems = ALL_NAV_ITEMS.filter(item => perms.allowedTabs.includes(item.key));
+
+  // Navegación segura: si el tab activo no está permitido, no resaltamos nada
+  const handleNav = (key) => {
+    if (perms.allowedTabs.includes(key)) {
+      setActiveTab(key);
+    }
+  };
 
   return (
     <aside 
@@ -38,7 +53,7 @@ export default function ModernSidebar({
     >
       <div className="w-14 sm:w-15 bg-white dark:bg-slate-900 rounded-3xl sm:rounded-full shadow-[0_10px_35px_rgba(0,0,0,0.08)] dark:shadow-[0_10px_35px_rgba(0,0,0,0.4)] border-2 border-slate-200/90 dark:border-slate-800 flex flex-col items-center py-5 px-1.5 gap-2 transition-all">
         
-        {/* Navigation Icons (Compact & Centered) */}
+        {/* Navigation Icons filtrados por rol */}
         <nav className="flex flex-col gap-4 items-center w-full">
           {navItems.map((item) => {
             const Icon = item.icon;
@@ -47,7 +62,7 @@ export default function ModernSidebar({
               <button
                 key={item.key}
                 type="button"
-                onClick={() => setActiveTab(item.key)}
+                onClick={() => handleNav(item.key)}
                 title={item.label}
                 className={`w-10 h-10 rounded-xl sm:rounded-full flex items-center justify-center transition-all duration-200 relative group cursor-pointer ${
                   isActive
@@ -56,7 +71,6 @@ export default function ModernSidebar({
                 }`}
               >
                 <Icon size={19} strokeWidth={isActive ? 2.2 : 1.8} />
-
                 {/* Floating tooltip */}
                 <span className="pointer-events-none absolute left-14 scale-0 group-hover:scale-100 transition-all origin-left bg-slate-900 text-white text-xs font-bold px-2.5 py-1.5 rounded-lg whitespace-nowrap shadow-xl z-50">
                   {item.label}
@@ -65,49 +79,55 @@ export default function ModernSidebar({
             );
           })}
 
-          {/* Clientes button */}
-          <button
-            type="button"
-            onClick={onOpenCustomers}
-            title="Cartera de Clientes"
-            className="w-10 h-10 rounded-xl sm:rounded-full flex items-center justify-center text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60 transition-all duration-200 relative group cursor-pointer"
-          >
-            <Users size={19} strokeWidth={1.8} />
-            <span className="pointer-events-none absolute left-14 scale-0 group-hover:scale-100 transition-all origin-left bg-slate-900 text-white text-xs font-bold px-2.5 py-1.5 rounded-lg whitespace-nowrap shadow-xl z-50">
-              Cartera de Clientes
-            </span>
-          </button>
+          {/* Clientes — solo si el rol tiene permiso */}
+          {perms.showCustomers && (
+            <button
+              type="button"
+              onClick={onOpenCustomers}
+              title="Cartera de Clientes"
+              className="w-10 h-10 rounded-xl sm:rounded-full flex items-center justify-center text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60 transition-all duration-200 relative group cursor-pointer"
+            >
+              <Users size={19} strokeWidth={1.8} />
+              <span className="pointer-events-none absolute left-14 scale-0 group-hover:scale-100 transition-all origin-left bg-slate-900 text-white text-xs font-bold px-2.5 py-1.5 rounded-lg whitespace-nowrap shadow-xl z-50">
+                Cartera de Clientes
+              </span>
+            </button>
+          )}
 
-          {/* Workers & Roles management button */}
-          <button
-            type="button"
-            onClick={onOpenUsersModal}
-            title="Gestión de Trabajadores & Roles"
-            className="w-10 h-10 rounded-xl sm:rounded-full flex items-center justify-center text-slate-400 hover:text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-950/40 transition-all duration-200 relative group cursor-pointer"
-          >
-            <ShieldCheck size={19} strokeWidth={1.8} />
-            <span className="pointer-events-none absolute left-14 scale-0 group-hover:scale-100 transition-all origin-left bg-orange-600 text-white text-xs font-bold px-2.5 py-1.5 rounded-lg whitespace-nowrap shadow-xl z-50">
-              Usuarios & Roles
-            </span>
-          </button>
+          {/* Gestión de Usuarios — solo SUPER_ADMIN */}
+          {perms.showUsersModal && (
+            <button
+              type="button"
+              onClick={onOpenUsersModal}
+              title="Gestión de Trabajadores & Roles"
+              className="w-10 h-10 rounded-xl sm:rounded-full flex items-center justify-center text-slate-400 hover:text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-950/40 transition-all duration-200 relative group cursor-pointer"
+            >
+              <ShieldCheck size={19} strokeWidth={1.8} />
+              <span className="pointer-events-none absolute left-14 scale-0 group-hover:scale-100 transition-all origin-left bg-orange-600 text-white text-xs font-bold px-2.5 py-1.5 rounded-lg whitespace-nowrap shadow-xl z-50">
+                Usuarios & Roles
+              </span>
+            </button>
+          )}
         </nav>
 
         {/* Subtle Divider */}
         <div className="w-7 h-px bg-slate-200 dark:bg-slate-800 my-1" />
 
-        {/* Bottom Actions: Importer & Reload */}
+        {/* Bottom: Importador (solo roles con permiso) + Logout */}
         <div className="flex flex-col gap-1.5 items-center w-full">
-          <button 
-            type="button"
-            onClick={onOpenImporter}
-            title="Importador Google Sheets & Excel"
-            className="w-10 h-10 rounded-xl sm:rounded-full flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all group relative cursor-pointer"
-          >
-            <Sliders size={18} strokeWidth={1.8} />
-            <span className="pointer-events-none absolute left-14 scale-0 group-hover:scale-100 transition-all origin-left bg-slate-900 text-white text-xs font-semibold px-2.5 py-1.5 rounded-lg whitespace-nowrap shadow-xl z-50">
-              Importador Excel / Sheets
-            </span>
-          </button>
+          {perms.showImporter && (
+            <button 
+              type="button"
+              onClick={onOpenImporter}
+              title="Importador Google Sheets & Excel"
+              className="w-10 h-10 rounded-xl sm:rounded-full flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all group relative cursor-pointer"
+            >
+              <Sliders size={18} strokeWidth={1.8} />
+              <span className="pointer-events-none absolute left-14 scale-0 group-hover:scale-100 transition-all origin-left bg-slate-900 text-white text-xs font-semibold px-2.5 py-1.5 rounded-lg whitespace-nowrap shadow-xl z-50">
+                Importador Excel / Sheets
+              </span>
+            </button>
+          )}
           
           <button 
             type="button"

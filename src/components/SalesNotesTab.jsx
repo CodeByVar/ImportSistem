@@ -10,8 +10,29 @@ import {
   Users,
   Edit,
   AlertCircle,
-  MapPin
+  MapPin,
+  Banknote,
+  QrCode
 } from 'lucide-react';
+
+function getActiveRoleFallback(currentUser) {
+  if (currentUser?.role) return currentUser.role;
+  try {
+    const savedAuth = localStorage.getItem('siscontrol_auth_session');
+    if (savedAuth) {
+      const parsed = JSON.parse(savedAuth);
+      if (parsed?.user?.role) return parsed.user.role;
+    }
+    const savedActive = localStorage.getItem('siscontrol_active_user');
+    if (savedActive) {
+      const parsed = JSON.parse(savedActive);
+      if (parsed?.role) return parsed.role;
+    }
+  } catch (e) {
+    // ignore
+  }
+  return 'SUPER_ADMIN';
+}
 
 export default function SalesNotesTab({
   onOpenNewNote,
@@ -20,7 +41,9 @@ export default function SalesNotesTab({
   onOpenCustomers,
   onOpenAddPayment,
   onNavigateToContainers,
-  refreshTrigger
+  onNavigateToWeekly,
+  refreshTrigger,
+  currentUser
 }) {
   const [notes, setNotes] = useState([]);
   const [kpis, setKpis] = useState(null);
@@ -28,12 +51,20 @@ export default function SalesNotesTab({
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('TODAS');
   const [error, setError] = useState('');
+  const [activeDayInfo, setActiveDayInfo] = useState(() => {
+    const localToday = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0];
+    return { dateIso: localToday, dateFull: 'HOY' };
+  });
+
+  const userRole = getActiveRoleFallback(currentUser);
+  const isWarehouse = userRole === 'ALMACEN';
 
   const fetchNotes = useCallback(async () => {
     setIsLoading(true);
     setError('');
     try {
-      let url = `/api/sales-notes?status=${statusFilter}&search=${encodeURIComponent(searchTerm)}`;
+      const dailyDateParam = activeDayInfo?.dateIso || '';
+      let url = `/api/sales-notes?status=${statusFilter}&search=${encodeURIComponent(searchTerm)}&dailyDate=${encodeURIComponent(dailyDateParam)}`;
       const res = await fetch(url).then(r => r.json());
       if (res.success) {
         setNotes(res.data);
@@ -46,7 +77,7 @@ export default function SalesNotesTab({
     } finally {
       setIsLoading(false);
     }
-  }, [searchTerm, statusFilter]);
+  }, [searchTerm, statusFilter, activeDayInfo?.dateIso]);
 
   useEffect(() => {
     fetchNotes();
@@ -80,56 +111,111 @@ export default function SalesNotesTab({
         onOpenNewNote={onOpenNewNote} 
         onOpenAddPayment={onOpenAddPayment}
         onNavigateToContainers={onNavigateToContainers}
+        onNavigateToWeekly={onNavigateToWeekly}
+        onActiveDateChange={setActiveDayInfo}
+        onOrderDelivered={fetchNotes}
         refreshTrigger={refreshTrigger}
       />
 
-      {/* 2. RESUMEN FINANCIERO DE NOTAS (BAJADO ABAJO DE LA ORDEN DEL DÍA) */}
+      {/* 2. RESUMEN FINANCIERO DE NOTAS (PARA ALMACÉN: SOLO COBROS DEL DÍA EN EFECTIVO Y QR) */}
       {kpis && (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-          gap: '16px',
-          marginBottom: '24px'
-        }}>
-          {/* Total Facturado */}
-          <div className="glass-panel" style={{ padding: '18px 20px', borderRadius: '14px', borderLeft: '4px solid var(--cyan-primary)' }}>
-            <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Total Ventas en Notas
+        isWarehouse ? (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: '16px',
+            marginBottom: '24px'
+          }}>
+            {/* Cobrado en Efectivo del Día */}
+            <div className="glass-panel" style={{ padding: '18px 20px', borderRadius: '14px', borderLeft: '4px solid #f59e0b' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <Banknote size={15} style={{ color: '#f59e0b', flexShrink: 0 }} />
+                <span>Cobrado en Efectivo ({activeDayInfo?.dateFull || 'Día'})</span>
+              </div>
+              <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#f59e0b', marginTop: '4px', fontFamily: 'monospace' }}>
+                Bs {formatBs(kpis.daily_cash)}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                {kpis.daily_cash_count || 0} cobros en efectivo en el día
+              </div>
             </div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--cyan-primary)', marginTop: '4px', fontFamily: 'monospace' }}>
-              Bs {formatBs(kpis.total_sales)}
-            </div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-              {kpis.total_notes} notas emitidas
-            </div>
-          </div>
 
-          {/* Total Cobrado / Abonos */}
-          <div className="glass-panel" style={{ padding: '18px 20px', borderRadius: '14px', borderLeft: '4px solid var(--emerald-success)' }}>
-            <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Total Cobrado en Efectivo/QR
+            {/* Cobrado por QR del Día */}
+            <div className="glass-panel" style={{ padding: '18px 20px', borderRadius: '14px', borderLeft: '4px solid var(--cyan-primary)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <QrCode size={15} style={{ color: 'var(--cyan-primary)', flexShrink: 0 }} />
+                <span>Cobrado por QR ({activeDayInfo?.dateFull || 'Día'})</span>
+              </div>
+              <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--cyan-primary)', marginTop: '4px', fontFamily: 'monospace' }}>
+                Bs {formatBs(kpis.daily_qr)}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                Jaime: Bs {formatBs(kpis.daily_qr_jaime)} • Betho: Bs {formatBs(kpis.daily_qr_betho)}
+              </div>
             </div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--emerald-success)', marginTop: '4px', fontFamily: 'monospace' }}>
-              Bs {formatBs(kpis.total_collected)}
-            </div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-              Ingresos reales en caja y cuentas
-            </div>
-          </div>
 
-          {/* Saldo Pendiente por Cobrar */}
-          <div className="glass-panel" style={{ padding: '18px 20px', borderRadius: '14px', borderLeft: '4px solid #fb7185' }}>
-            <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Saldos por Cobrar (Clientes)
-            </div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#fb7185', marginTop: '4px', fontFamily: 'monospace' }}>
-              Bs {formatBs(kpis.total_receivable)}
-            </div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-              {kpis.pending_notes_count} notas pendientes de pago
+            {/* Total Cobrado en el Día (Efectivo + QR) */}
+            <div className="glass-panel" style={{ padding: '18px 20px', borderRadius: '14px', borderLeft: '4px solid var(--emerald-success)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <DollarSign size={15} style={{ color: 'var(--emerald-success)', flexShrink: 0 }} />
+                <span>Total Cobrado en el Día (Efectivo + QR)</span>
+              </div>
+              <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--emerald-success)', marginTop: '4px', fontFamily: 'monospace' }}>
+                Bs {formatBs(kpis.daily_total_collected)}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                {kpis.daily_payments_count || 0} cobros registrados en el día
+                {Number(kpis.daily_discount || 0) > 0 ? ` • Rebajas: Bs ${formatBs(kpis.daily_discount)}` : ''}
+              </div>
             </div>
           </div>
-        </div>
+        ) : (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: '16px',
+            marginBottom: '24px'
+          }}>
+            {/* Total Facturado */}
+            <div className="glass-panel" style={{ padding: '18px 20px', borderRadius: '14px', borderLeft: '4px solid var(--cyan-primary)' }}>
+              <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Total Ventas en Notas
+              </div>
+              <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--cyan-primary)', marginTop: '4px', fontFamily: 'monospace' }}>
+                Bs {formatBs(kpis.total_sales)}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                {kpis.total_notes} notas emitidas
+              </div>
+            </div>
+
+            {/* Total Cobrado / Abonos */}
+            <div className="glass-panel" style={{ padding: '18px 20px', borderRadius: '14px', borderLeft: '4px solid var(--emerald-success)' }}>
+              <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Total Cobrado en Efectivo/QR
+              </div>
+              <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--emerald-success)', marginTop: '4px', fontFamily: 'monospace' }}>
+                Bs {formatBs(kpis.total_collected)}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                Ingresos reales en caja y cuentas
+              </div>
+            </div>
+
+            {/* Saldo Pendiente por Cobrar */}
+            <div className="glass-panel" style={{ padding: '18px 20px', borderRadius: '14px', borderLeft: '4px solid #fb7185' }}>
+              <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Saldos por Cobrar (Clientes)
+              </div>
+              <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#fb7185', marginTop: '4px', fontFamily: 'monospace' }}>
+                Bs {formatBs(kpis.total_receivable)}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                {kpis.pending_notes_count} notas pendientes de pago
+              </div>
+            </div>
+          </div>
+        )
       )}
 
       {/* Main Panel */}

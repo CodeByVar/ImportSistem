@@ -1,9 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { LayoutDashboard } from 'lucide-react';
+import { LayoutDashboard, Users, Box, ShieldCheck, Sparkles, Eye } from 'lucide-react';
 import MetricCards from './dashboard/MetricCards';
 import WarehouseStock from './dashboard/WarehouseStock';
 import FinancialChart from './dashboard/FinancialChart';
 import RecentActivityTable from './dashboard/RecentActivityTable';
+import SalesDashboard from './dashboard/SalesDashboard';
+import WarehouseDashboard from './dashboard/WarehouseDashboard';
 
 export default function ModernDashboard({ 
   stats, 
@@ -13,10 +15,78 @@ export default function ModernDashboard({
   containers = [],
   onOpenNewMovement, 
   onOpenNewNote, 
-  onOpenNewProduct,
+  onOpenNewProduct, 
   onOpenNewContainer,
-  onSelectTab 
+  onOpenCustomers,
+  onSelectTab,
+  currentUser
 }) {
+  const role = currentUser?.role || 'SUPER_ADMIN';
+  const isSuperAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(role);
+  const [adminViewMode, setAdminViewMode] = useState('EJECUTIVO'); // 'EJECUTIVO', 'VENTAS', 'ALMACEN'
+
+  // 1. Si es Vendedor o el Super Admin previsualiza Ventas
+  if (role === 'VENTAS' || (isSuperAdmin && adminViewMode === 'VENTAS')) {
+    return (
+      <div className="space-y-4">
+        {isSuperAdmin && (
+          <div className="flex items-center justify-between bg-orange-50 dark:bg-orange-950/40 p-3 rounded-2xl border border-orange-200 dark:border-orange-900/60 text-xs">
+            <div className="flex items-center gap-2 text-orange-800 dark:text-orange-300 font-bold">
+              <Eye size={15} />
+              <span>👑 Modo Previsualización: Estás viendo el Dashboard exclusivo para <strong>Ventas</strong></span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAdminViewMode('EJECUTIVO')}
+              className="px-3 py-1 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold cursor-pointer transition-colors"
+            >
+              Volver a Dashboard Ejecutivo
+            </button>
+          </div>
+        )}
+        <SalesDashboard
+          products={products}
+          onOpenNewNote={onOpenNewNote}
+          onOpenCustomers={onOpenCustomers}
+          onSelectTab={onSelectTab}
+          currentUser={currentUser}
+        />
+      </div>
+    );
+  }
+
+  // 2. Si es de Almacén o el Super Admin previsualiza Almacén
+  if (role === 'ALMACEN' || (isSuperAdmin && adminViewMode === 'ALMACEN')) {
+    return (
+      <div className="space-y-4">
+        {isSuperAdmin && (
+          <div className="flex items-center justify-between bg-indigo-50 dark:bg-indigo-950/40 p-3 rounded-2xl border border-indigo-200 dark:border-indigo-900/60 text-xs">
+            <div className="flex items-center gap-2 text-indigo-800 dark:text-indigo-300 font-bold">
+              <Eye size={15} />
+              <span>👑 Modo Previsualización: Estás viendo el Dashboard exclusivo para <strong>Almacén</strong></span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAdminViewMode('EJECUTIVO')}
+              className="px-3 py-1 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold cursor-pointer transition-colors"
+            >
+              Volver a Dashboard Ejecutivo
+            </button>
+          </div>
+        )}
+        <WarehouseDashboard
+          products={products}
+          containers={containers}
+          onSelectTab={onSelectTab}
+          currentUser={currentUser}
+        />
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // 3. DASHBOARD EJECUTIVO (SUPER_ADMIN / ADMIN)
+  // =========================================================================
   const [currency] = useState('BOB'); // 'BOB' (Bs)
   const [searchTerm, setSearchTerm] = useState('');
   const [movementFilter, setMovementFilter] = useState('ALL'); // 'ALL', 'SALIDA', 'ENTRADA'
@@ -178,54 +248,29 @@ export default function ModernDashboard({
         sku: 'W-MTM402',
         category: 'Bombas & Maquinaria',
         type: 'ENTRADA',
-        amountBob: 95292.40,
-        quantity: 14781,
+        amountBob: 142000,
+        quantity: 80,
         status: 'Ingresado',
         statusType: 'info',
-        date: '2026-10-27'
+        date: '2026-11-04'
       },
       {
-        id: 'NV-0042',
-        client: 'Erick García - Mercado La Pampa (Despacho Herramientas)',
-        party: 'Erick García',
-        sku: 'DCPB488EM',
+        id: 'NV-2026-104',
+        client: 'Ferretería El Tornillo Sucre',
+        party: 'Ferretería El Tornillo',
+        sku: 'UT-ROT900',
         category: 'Herramientas Eléctricas',
         type: 'SALIDA',
-        amountBob: 12650.00,
-        quantity: 150,
+        amountBob: 12450,
+        quantity: 15,
         status: 'Despachado',
         statusType: 'success',
-        date: '2026-10-26'
-      },
-      {
-        id: 'NV-0041',
-        client: 'Accesorios Compresor 15 Pzs Kamasa',
-        party: 'Ferretería Central',
-        sku: 'KM-1351',
-        category: 'Neumática & Aire',
-        type: 'SALIDA',
-        amountBob: 8880.00,
-        quantity: 48,
-        status: 'Despachado',
-        statusType: 'success',
-        date: '2026-10-25'
-      },
-      {
-        id: 'NV-0040',
-        client: 'Llave Impacto Inalámbrica 20V Dongcheng',
-        party: 'Distribuidora Cochabamba',
-        sku: 'DCPB488EM',
-        category: 'Herramientas Eléctricas',
-        type: 'SALIDA',
-        amountBob: 4572.00,
-        quantity: 12,
-        status: 'Despachado',
-        statusType: 'success',
-        date: '2026-10-24'
+        date: '2026-11-04'
       }
     ];
   }, [movements]);
 
+  // Filtered movements for recent activity
   const filteredActivities = useMemo(() => {
     return activities.filter(a => {
       const matchSearch = a.client.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -257,42 +302,79 @@ export default function ModernDashboard({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       
-      {/* 1. HEADER PRINCIPAL */}
+      {/* 1. HEADER PRINCIPAL CON SELECTOR DE VISTA PARA SUPER ADMIN */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
         gap: '14px',
         marginBottom: '6px'
       }}>
-        <div style={{
-          width: '42px',
-          height: '42px',
-          borderRadius: '12px',
-          background: 'rgba(234, 88, 12, 0.12)',
-          border: '1px solid rgba(234, 88, 12, 0.25)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: '#EA580C',
-          flexShrink: 0
-        }}>
-          <LayoutDashboard size={22} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div style={{
+            width: '42px',
+            height: '42px',
+            borderRadius: '12px',
+            background: 'rgba(234, 88, 12, 0.12)',
+            border: '1px solid rgba(234, 88, 12, 0.25)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#EA580C',
+            flexShrink: 0
+          }}>
+            <LayoutDashboard size={22} />
+          </div>
+
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <h2 className="font-heading" style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>
+                Panel de Control Gerencial & Financiero
+              </h2>
+              <span className="badge badge-emerald" style={{ fontSize: '0.70rem', padding: '2px 8px' }}>
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }} />
+                SISCONTROL • Cochabamba
+              </span>
+            </div>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px', margin: 0 }}>
+              Supervisión de inventario valorizado, notas de venta y contenedores en tránsito ({totalProductsCount.toLocaleString()} productos).
+            </p>
+          </div>
         </div>
 
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <h2 className="font-heading" style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>
-              Panel de Control General
-            </h2>
-            <span className="badge badge-emerald" style={{ fontSize: '0.70rem', padding: '2px 8px' }}>
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }} />
-              SISCONTROL • Cochabamba
-            </span>
+        {/* Selector de Vistas de Dashboard para Super Admin */}
+        {isSuperAdmin && (
+          <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 text-xs">
+            <button
+              type="button"
+              onClick={() => setAdminViewMode('EJECUTIVO')}
+              className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+                adminViewMode === 'EJECUTIVO' 
+                  ? 'bg-white dark:bg-slate-900 text-orange-600 shadow-sm' 
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
+              }`}
+            >
+              👑 Ejecutivo
+            </button>
+            <button
+              type="button"
+              onClick={() => setAdminViewMode('VENTAS')}
+              className="px-3 py-1.5 rounded-xl font-bold text-slate-500 hover:text-orange-600 dark:hover:text-orange-400 transition-all cursor-pointer"
+              title="Previsualizar el dashboard de Ventas"
+            >
+              💼 Ventas
+            </button>
+            <button
+              type="button"
+              onClick={() => setAdminViewMode('ALMACEN')}
+              className="px-3 py-1.5 rounded-xl font-bold text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all cursor-pointer"
+              title="Previsualizar el dashboard de Almacén"
+            >
+              📦 Almacén
+            </button>
           </div>
-          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px', margin: 0 }}>
-            Supervisión de inventario valorizado, notas de venta y contenedores en tránsito ({totalProductsCount.toLocaleString()} productos).
-          </p>
-        </div>
+        )}
       </div>
 
       {/* 2. TIER 1: 4 TARJETAS KPI MODULARES */}
@@ -308,19 +390,13 @@ export default function ModernDashboard({
         onSelectTab={onSelectTab}
       />
 
-      {/* 3. TIER 2: 2 PANELES SIMÉTRICOS (50% / 50%) */}
+      {/* 3. TIER 2: GRAFICO FINANCIERO Y DISTRIBUCION DE BODEGAS */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
         gap: '20px'
       }}>
-        <WarehouseStock
-          totalStockValuationCostBob={totalStockValuationCostBob}
-          categoriesDistribution={categoriesDistribution}
-          formatShortMoney={formatShortMoney}
-          onSelectTab={onSelectTab}
-        />
-
+        {/* Columna Izquierda: Tendencias y Flujo Financiero */}
         <FinancialChart
           monthlyFlowData={monthlyFlowData}
           chartFilter={chartFilter}
@@ -328,20 +404,28 @@ export default function ModernDashboard({
           hoveredMonthIdx={hoveredMonthIdx}
           setHoveredMonthIdx={setHoveredMonthIdx}
           formatShortMoney={formatShortMoney}
+        />
+
+        {/* Columna Derecha: Stock de Bodegas y Embarques en Tránsito */}
+        <WarehouseStock
           activeShipment={activeShipment}
+          categoriesDistribution={categoriesDistribution}
           onSelectTab={onSelectTab}
         />
       </div>
 
-      {/* 4. TIER 3: TABLA DE OPERACIONES RECIENTES */}
+      {/* 4. TIER 3: KARDEX Y REGISTRO DE ACTIVIDAD RECIENTE */}
       <RecentActivityTable
         filteredActivities={filteredActivities}
-        searchTerm={searchTerm}
-        setSearchTerm={setSearchTerm}
         movementFilter={movementFilter}
         setMovementFilter={setMovementFilter}
+        searchTerm={searchTerm}
+        setSearchTerm={setSearchTerm}
         formatMoney={formatMoney}
-        onSelectTab={onSelectTab}
+        onOpenNewMovement={onOpenNewMovement}
+        onOpenNewNote={onOpenNewNote}
+        onOpenNewProduct={onOpenNewProduct}
+        onOpenNewContainer={onOpenNewContainer}
       />
 
     </div>

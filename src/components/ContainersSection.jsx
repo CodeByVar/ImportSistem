@@ -21,8 +21,12 @@ export default function ContainersSection({
   containers = [], 
   onNewContainer,
   onOpenPrelista,
-  onDeleteContainer
+  onDeleteContainer,
+  currentUser,
+  userRole = 'SUPER_ADMIN'
 }) {
+  const role = currentUser?.role || userRole;
+  const canSeeCosts = ['SUPER_ADMIN', 'ADMIN'].includes(role);
   const [filterType, setFilterType] = useState('all'); // 'all', 'maritimo', 'terrestre', 'transito', 'recibido'
 
   // Status badge config
@@ -268,8 +272,38 @@ export default function ContainersSection({
                     )}
                   </div>
 
-                  {/* Financial Values if defined */}
-                  {(c.total_fob > 0 || c.total_freight > 0) && (
+                  {/* Fecha de Llegada de Nueva Mercadería (Destacada) */}
+                  <div style={{
+                    background: c.status === 'recibido' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(6, 182, 212, 0.12)',
+                    border: `1px solid ${c.status === 'recibido' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(6, 182, 212, 0.3)'}`,
+                    borderRadius: '10px',
+                    padding: '10px 14px',
+                    marginBottom: '14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    fontSize: '0.78rem'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Calendar size={15} color={c.status === 'recibido' ? 'var(--emerald-success)' : 'var(--cyan-primary)'} />
+                      <span style={{ fontWeight: 600, color: '#f8fafc' }}>
+                        {c.status === 'recibido' ? 'Llegada a Bodega:' : 'Fecha Llegada Nueva Mercadería:'}
+                      </span>
+                    </div>
+                    <span style={{
+                      fontWeight: 800,
+                      color: c.status === 'recibido' ? 'var(--emerald-success)' : 'var(--cyan-primary)',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '0.85rem'
+                    }}>
+                      {c.status === 'recibido'
+                        ? formatDate(c.actual_arrival || c.estimated_arrival)
+                        : formatDate(c.estimated_arrival)}
+                    </span>
+                  </div>
+
+                  {/* Financial Values if defined (SOLO PARA ADMINISTRADORES) */}
+                  {canSeeCosts && (c.total_fob > 0 || c.total_freight > 0) && (
                     <div style={{
                       display: 'grid',
                       gridTemplateColumns: '1fr 1fr',

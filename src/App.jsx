@@ -22,6 +22,7 @@ import BatchLotImportModal from './components/BatchLotImportModal';
 import ContainerPrelistaModal from './components/ContainerPrelistaModal';
 import UsersModal from './components/UsersModal';
 import SuperLogin from './components/SuperLogin';
+import MobileBottomNav from './components/MobileBottomNav';
 import { 
   LayoutDashboard, 
   Package, 
@@ -35,6 +36,7 @@ import {
   Database,
   CheckCircle2
 } from 'lucide-react';
+import { getPermissions, canAccessTab } from './config/permissions';
 
 export default function App() {
   const [theme, setTheme] = useState(() => {
@@ -120,14 +122,9 @@ export default function App() {
     localStorage.setItem('siscontrol_auth_session', JSON.stringify(session));
     localStorage.setItem('siscontrol_active_user', JSON.stringify(user));
     
-    // Auto-direct to the most relevant view according to role
-    if (user.role === 'ALMACEN') {
-      setActiveTab('weekly');
-    } else if (user.role === 'VENTAS') {
-      setActiveTab('notes');
-    } else {
-      setActiveTab('dashboard');
-    }
+    // Auto-redirigir a la pestaña por defecto del rol
+    const perms = getPermissions(user.role);
+    setActiveTab(perms.defaultTab);
 
     showToast(`¡Sesión iniciada! Bienvenido, ${user.name}`);
   };
@@ -187,7 +184,9 @@ export default function App() {
   // Filter alerts click handler from KPI card
   const handleFilterAlerts = (filterType) => {
     setInventoryInitialFilter(filterType);
-    setActiveTab('inventory');
+    if (canAccessTab(currentUser?.role, 'inventory')) {
+      setActiveTab('inventory');
+    }
   };
 
   // Delete container handler
@@ -210,6 +209,13 @@ export default function App() {
     return <SuperLogin onLoginSuccess={handleLoginSuccess} />;
   }
 
+  // setActiveTab seguro: solo cambia si el rol tiene permiso
+  const safeSetActiveTab = (tab) => {
+    if (canAccessTab(currentUser?.role, tab)) {
+      setActiveTab(tab);
+    }
+  };
+
   return (
     <div className="h-screen w-full bg-slate-100/70 dark:bg-slate-950 flex flex-row text-slate-900 dark:text-slate-100 transition-colors duration-200 antialiased overflow-hidden">
       {/* Toast Notification */}
@@ -224,27 +230,46 @@ export default function App() {
       <div className="hidden sm:flex flex-col shrink-0 justify-start select-none z-30 h-full">
         <ModernSidebar
           activeTab={activeTab}
-          setActiveTab={setActiveTab}
+          setActiveTab={safeSetActiveTab}
           theme={theme}
           toggleTheme={toggleTheme}
           onOpenCustomers={() => setIsCustomersModalOpen(true)}
           onOpenImporter={() => setIsImporterOpen(true)}
           onOpenUsersModal={() => setIsUsersModalOpen(true)}
           onLogout={handleLogout}
+          currentUser={currentUser}
         />
       </div>
 
       {/* 2. RIGHT COLUMN: Fixed Top Header + Scrollable Middle Content */}
-      <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden pr-4 sm:pr-8 pl-4 sm:pl-6">
+      <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden px-2 sm:pr-8 sm:pl-6">
         {/* FIXED HEADER (Permanece fijo en la parte superior) */}
-        <div className="shrink-0 pt-4 pb-3 z-20 w-full">
+        <div className="shrink-0 pt-2 sm:pt-4 pb-2 sm:pb-3 z-20 w-full">
           <ModernHeader
             activeTab={activeTab}
-            setActiveTab={setActiveTab}
+            setActiveTab={safeSetActiveTab}
             theme={theme}
             toggleTheme={toggleTheme}
             currentUser={currentUser}
-            onOpenUsersModal={() => setIsUsersModalOpen(true)}
+            products={products}
+            onUpdateCurrentUser={(updatedUser) => {
+              setCurrentUser(updatedUser);
+              localStorage.setItem('siscontrol_active_user', JSON.stringify(updatedUser));
+              try {
+                const savedAuth = localStorage.getItem('siscontrol_auth_session');
+                if (savedAuth) {
+                  const parsed = JSON.parse(savedAuth);
+                  parsed.user = updatedUser;
+                  localStorage.setItem('siscontrol_auth_session', JSON.stringify(parsed));
+                }
+              } catch (e) {}
+              showToast('¡Perfil y credenciales actualizados!');
+            }}
+            onOpenUsersModal={() => {
+              if (currentUser?.role === 'SUPER_ADMIN') {
+                setIsUsersModalOpen(true);
+              }
+            }}
             onLogout={handleLogout}
             onOpenNewNote={() => {
               setEditNoteData(null);
@@ -255,8 +280,8 @@ export default function App() {
         </div>
 
         {/* 3. SCROLLABLE MIDDLE CONTENT (SOLO ESTO SE MUEVE CON EL SCROLL - ESTILO DRIVE) */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden pt-1 pb-8 scroll-smooth">
-          <main className="bg-white dark:bg-slate-900 rounded-3xl p-5 sm:p-7 lg:p-8 shadow-[0_10px_35px_rgba(0,0,0,0.04)] dark:shadow-[0_10px_35px_rgba(0,0,0,0.3)] border border-slate-200/80 dark:border-slate-800 transition-all mb-4">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden pt-1 pb-24 sm:pb-8 scroll-smooth">
+          <main className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl p-3 sm:p-7 lg:p-8 shadow-[0_10px_35px_rgba(0,0,0,0.04)] dark:shadow-[0_10px_35px_rgba(0,0,0,0.3)] border border-slate-200/80 dark:border-slate-800 transition-all mb-4">
             {activeTab === 'dashboard' && (
               <ModernDashboard
                 stats={stats}
@@ -271,7 +296,9 @@ export default function App() {
                 }}
                 onOpenNewProduct={() => setIsProductModalOpen(true)}
                 onOpenNewContainer={() => setIsContainerModalOpen(true)}
-                onSelectTab={setActiveTab}
+                onOpenCustomers={() => setIsCustomersModalOpen(true)}
+                onSelectTab={safeSetActiveTab}
+                currentUser={currentUser}
               />
             )}
 
@@ -294,8 +321,10 @@ export default function App() {
                   setAddPaymentNoteData(note);
                   setIsAddPaymentModalOpen(true);
                 }}
-                onNavigateToContainers={() => setActiveTab('containers')}
+                onNavigateToContainers={() => safeSetActiveTab('containers')}
+                onNavigateToWeekly={() => safeSetActiveTab('weekly')}
                 refreshTrigger={notesRefreshTrigger}
+                currentUser={currentUser}
               />
             )}
 
@@ -305,12 +334,14 @@ export default function App() {
                 initialFilter={inventoryInitialFilter}
                 onOpenNewMovement={handleOpenNewMovement}
                 onEditProduct={() => {}}
+                userRole={currentUser?.role || 'VENTAS'}
               />
             )}
 
             {activeTab === 'weekly' && (
               <WeeklyDispatchesTable 
                 onStockUpdated={fetchData} 
+                userRole={currentUser?.role}
               />
             )}
 
@@ -327,11 +358,25 @@ export default function App() {
                   setIsPrelistModalOpen(true);
                 }}
                 onDeleteContainer={handleDeleteContainer}
+                currentUser={currentUser}
+                userRole={currentUser?.role}
               />
             )}
           </main>
         </div>
       </div>
+
+      {/* MOBILE BOTTOM NAVIGATION BAR (Solo en celular sm:hidden) */}
+      <MobileBottomNav
+        activeTab={activeTab}
+        setActiveTab={safeSetActiveTab}
+        currentUser={currentUser}
+        onOpenNewNote={() => {
+          setEditNoteData(null);
+          setIsNewNoteModalOpen(true);
+        }}
+        onOpenCustomers={() => setIsCustomersModalOpen(true)}
+      />
 
       {/* MODALS */}
       {/* 1. Google Sheets / Excel Importer */}
@@ -414,6 +459,8 @@ export default function App() {
         onUpdateContainer={() => {
           fetchData();
         }}
+        userRole={currentUser?.role}
+        currentUser={currentUser}
       />
 
       {/* 5. New / Edit Sales Note Modal */}
@@ -488,6 +535,9 @@ export default function App() {
           setCurrentUser(user);
           localStorage.setItem('siscontrol_auth_session', JSON.stringify(session));
           localStorage.setItem('siscontrol_active_user', JSON.stringify(user));
+          // Redirigir a la pestaña por defecto del nuevo rol
+          const perms = getPermissions(user.role);
+          setActiveTab(perms.defaultTab);
           showToast(`Sesión cambiada a: ${user.name} (${user.role})`);
         }}
       />

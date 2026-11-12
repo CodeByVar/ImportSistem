@@ -428,6 +428,27 @@ export function initDatabase() {
   addCiCol('wholesale_price', 'REAL DEFAULT 0');            // Precio Mayorista
   addCiCol('special_price', 'REAL DEFAULT 0');              // Precio Especial
 
+  // Migrate sales_notes columns for deferred stock deduction on delivery confirmation
+  const snCols = db.prepare("PRAGMA table_info(sales_notes)").all().map(c => c.name);
+  const addSnCol = (col, typeDef) => {
+    if (!snCols.includes(col)) {
+      try {
+        db.exec(`ALTER TABLE sales_notes ADD COLUMN ${col} ${typeDef}`);
+      } catch (e) {}
+    }
+  };
+  addSnCol('delivery_status', "TEXT DEFAULT 'PENDIENTE'"); // 'PENDIENTE', 'EN PREPARACIÓN', 'ENTREGADO'
+  addSnCol('stock_deducted', 'INTEGER DEFAULT 0'); // 1 si ya se descontó el stock al confirmar entrega
+  addSnCol('delivered_at', 'TEXT'); // Fecha y hora de confirmación de entrega
+
+  // Migrate users columns for profile photo (avatar_url)
+  const userCols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
+  if (!userCols.includes('avatar_url')) {
+    try {
+      db.exec(`ALTER TABLE users ADD COLUMN avatar_url TEXT`);
+    } catch (e) {}
+  }
+
   console.log('✅ SISCONTROL SQLite Database initialized at:', dbPath);
 }
 

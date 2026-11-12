@@ -30,8 +30,12 @@ export default function ContainerPrelistaModal({
   onClose, 
   container, 
   onUpdateContainer,
-  customers = []
+  customers = [],
+  userRole = 'SUPER_ADMIN',
+  currentUser
 }) {
+  const role = currentUser?.role || userRole;
+  const canSeeCosts = ['SUPER_ADMIN', 'ADMIN'].includes(role);
   const [activeTab, setActiveTab] = useState('prelist'); // 'prelist', 'reservations', 'logistics'
   const [items, setItems] = useState([]);
   const [reservations, setReservations] = useState([]);
@@ -735,6 +739,38 @@ export default function ContainerPrelistaModal({
           </div>
         </div>
 
+        {/* Banner Destacado: Fecha de Llegada de Nueva Mercadería */}
+        <div style={{
+          padding: '12px 24px',
+          background: container.status === 'recibido' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(6, 182, 212, 0.15)',
+          borderBottom: '1px solid var(--border-subtle)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Calendar size={20} color={container.status === 'recibido' ? 'var(--emerald-success)' : 'var(--cyan-primary)'} />
+            <div>
+              <span style={{ fontSize: '0.70rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>
+                {container.status === 'recibido' ? '✅ Mercadería Recibida en Bodega:' : '📅 Fecha Estimada de Llegada Nueva Mercadería (Cochabamba):'}
+              </span>
+              <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#f8fafc', fontFamily: 'var(--font-mono)' }}>
+                {container.status === 'recibido'
+                  ? formatDate(container.actual_arrival || container.estimated_arrival)
+                  : formatDate(container.estimated_arrival)}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+            <span>Salida de Origen: <strong style={{ color: '#cbd5e1' }}>{container.departure_date ? formatDate(container.departure_date) : '-'}</strong></span>
+            {container.port_name && <span>Puerto: <strong style={{ color: '#38bdf8' }}>{container.port_name}</strong></span>}
+            {container.truck_plate && <span>Camión: <strong style={{ color: '#fbbf24' }}>{container.truck_plate}</strong></span>}
+          </div>
+        </div>
+
         {/* Top KPI Metrics Bar */}
         <div style={{
           padding: '12px 24px',
@@ -1091,15 +1127,15 @@ export default function ContainerPrelistaModal({
                       <th style={{ minWidth: '65px', textAlign: 'center', padding: '10px 6px' }}>Cajas</th>
                       <th style={{ minWidth: '65px', textAlign: 'center', padding: '10px 6px' }}>Unid/Cj</th>
                       <th style={{ minWidth: '75px', textAlign: 'center', padding: '10px 6px' }}>Total Unid</th>
-                      <th style={{ minWidth: '95px', textAlign: 'right', padding: '10px 8px', color: '#94a3b8' }}>Costo Ant. ($)</th>
-                      <th style={{ minWidth: '95px', textAlign: 'right', padding: '10px 8px', color: '#f87171' }}>Costo ($)</th>
-                      <th style={{ minWidth: '75px', textAlign: 'center', padding: '10px 6px', color: '#fbbf24' }}>% Margen</th>
-                      <th style={{ minWidth: '95px', textAlign: 'right', padding: '10px 8px', color: '#38bdf8' }}>P. Mayor</th>
-                      <th style={{ minWidth: '95px', textAlign: 'right', padding: '10px 8px', color: '#a78bfa' }}>P. Caja</th>
-                      <th style={{ minWidth: '95px', textAlign: 'right', padding: '10px 8px', color: '#34d399' }}>P. Especial</th>
+                      {canSeeCosts && <th style={{ minWidth: '95px', textAlign: 'right', padding: '10px 8px', color: '#94a3b8' }}>Costo Ant. ($)</th>}
+                      {canSeeCosts && <th style={{ minWidth: '95px', textAlign: 'right', padding: '10px 8px', color: '#f87171' }}>Costo ($)</th>}
+                      {canSeeCosts && <th style={{ minWidth: '75px', textAlign: 'center', padding: '10px 6px', color: '#fbbf24' }}>% Margen</th>}
+                      {canSeeCosts && <th style={{ minWidth: '95px', textAlign: 'right', padding: '10px 8px', color: '#38bdf8' }}>P. Mayor</th>}
+                      {canSeeCosts && <th style={{ minWidth: '95px', textAlign: 'right', padding: '10px 8px', color: '#a78bfa' }}>P. Caja</th>}
+                      {canSeeCosts && <th style={{ minWidth: '95px', textAlign: 'right', padding: '10px 8px', color: '#34d399' }}>P. Especial</th>}
                       <th style={{ minWidth: '75px', textAlign: 'center', padding: '10px 6px' }}>Reservadas</th>
                       <th style={{ minWidth: '85px', textAlign: 'center', padding: '10px 6px' }}>Disponibles</th>
-                      <th style={{ minWidth: '115px', textAlign: 'center', padding: '10px 8px' }}>Editar</th>
+                      {canSeeCosts && <th style={{ minWidth: '115px', textAlign: 'center', padding: '10px 8px' }}>Editar</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -1205,52 +1241,64 @@ export default function ContainerPrelistaModal({
                           </td>
 
                           {/* Costo Anterior */}
-                          <td className="mono" style={{ textAlign: 'right', color: '#94a3b8', padding: '8px 8px' }}>
-                            {isEditing
-                              ? editInput('previous_cost', '#94a3b8')
-                              : (it.previous_cost ? `$${Number(it.previous_cost).toFixed(2)}` : <span style={{ color: '#475569' }}>—</span>)
-                            }
-                          </td>
+                          {canSeeCosts && (
+                            <td className="mono" style={{ textAlign: 'right', color: '#94a3b8', padding: '8px 8px' }}>
+                              {isEditing
+                                ? editInput('previous_cost', '#94a3b8')
+                                : (it.previous_cost ? `$${Number(it.previous_cost).toFixed(2)}` : <span style={{ color: '#475569' }}>—</span>)
+                              }
+                            </td>
+                          )}
 
                           {/* Costo Actual (red accent) */}
-                          <td className="mono" style={{ textAlign: 'right', fontWeight: 600, color: '#f87171', padding: '8px 8px' }}>
-                            {isEditing
-                              ? editInput('unit_cost', '#f87171')
-                              : `$${Number(it.unit_cost || 0).toFixed(2)}`
-                            }
-                          </td>
+                          {canSeeCosts && (
+                            <td className="mono" style={{ textAlign: 'right', fontWeight: 600, color: '#f87171', padding: '8px 8px' }}>
+                              {isEditing
+                                ? editInput('unit_cost', '#f87171')
+                                : `$${Number(it.unit_cost || 0).toFixed(2)}`
+                              }
+                            </td>
+                          )}
 
                           {/* % Margen */}
-                          <td className="mono" style={{ textAlign: 'center', color: '#fbbf24', padding: '8px 6px' }}>
-                            {isEditing
-                              ? editInput('margin_percent', '#fbbf24')
-                              : (it.margin_percent ? `${Number(it.margin_percent).toFixed(1)}%` : '—')
-                            }
-                          </td>
+                          {canSeeCosts && (
+                            <td className="mono" style={{ textAlign: 'center', color: '#fbbf24', padding: '8px 6px' }}>
+                              {isEditing
+                                ? editInput('margin_percent', '#fbbf24')
+                                : (it.margin_percent ? `${Number(it.margin_percent).toFixed(1)}%` : '—')
+                              }
+                            </td>
+                          )}
 
                           {/* P. Mayor */}
-                          <td className="mono" style={{ textAlign: 'right', color: '#38bdf8', padding: '8px 8px' }}>
-                            {isEditing
-                              ? editInput('price_mayor', '#38bdf8')
-                              : (it.price_mayor ? `$${Number(it.price_mayor).toFixed(2)}` : '—')
-                            }
-                          </td>
+                          {canSeeCosts && (
+                            <td className="mono" style={{ textAlign: 'right', color: '#38bdf8', padding: '8px 8px' }}>
+                              {isEditing
+                                ? editInput('price_mayor', '#38bdf8')
+                                : (it.price_mayor ? `$${Number(it.price_mayor).toFixed(2)}` : '—')
+                              }
+                            </td>
+                          )}
 
                           {/* P. Caja */}
-                          <td className="mono" style={{ textAlign: 'right', color: '#a78bfa', padding: '8px 8px' }}>
-                            {isEditing
-                              ? editInput('price_caja', '#a78bfa')
-                              : (it.price_caja ? `$${Number(it.price_caja).toFixed(2)}` : '—')
-                            }
-                          </td>
+                          {canSeeCosts && (
+                            <td className="mono" style={{ textAlign: 'right', color: '#a78bfa', padding: '8px 8px' }}>
+                              {isEditing
+                                ? editInput('price_caja', '#a78bfa')
+                                : (it.price_caja ? `$${Number(it.price_caja).toFixed(2)}` : '—')
+                              }
+                            </td>
+                          )}
 
                           {/* P. Especial */}
-                          <td className="mono" style={{ textAlign: 'right', color: '#34d399', padding: '8px 8px' }}>
-                            {isEditing
-                              ? editInput('price_special', '#34d399')
-                              : (it.price_special ? `$${Number(it.price_special).toFixed(2)}` : '—')
-                            }
-                          </td>
+                          {canSeeCosts && (
+                            <td className="mono" style={{ textAlign: 'right', color: '#34d399', padding: '8px 8px' }}>
+                              {isEditing
+                                ? editInput('price_special', '#34d399')
+                                : (it.price_special ? `$${Number(it.price_special).toFixed(2)}` : '—')
+                              }
+                            </td>
+                          )}
 
                           {/* Reservadas */}
                           <td style={{ textAlign: 'center', padding: '8px 6px' }}>
@@ -1269,72 +1317,74 @@ export default function ContainerPrelistaModal({
                           </td>
 
                           {/* Acciones edición */}
-                          <td style={{ textAlign: 'center', padding: '8px 6px' }}>
-                            {isEditing ? (
-                              <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
-                                <button
-                                  onClick={() => handleSaveItemEdit(it)}
-                                  disabled={isSavingItem}
-                                  title="Guardar cambios (Enter)"
-                                  style={{
-                                    background: 'rgba(16,185,129,0.25)',
-                                    border: '1px solid rgba(16,185,129,0.6)',
-                                    color: '#34d399',
-                                    borderRadius: '6px',
-                                    padding: '5px 9px',
-                                    cursor: 'pointer',
-                                    fontSize: '0.72rem',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '3px',
-                                    fontWeight: 600
-                                  }}
-                                >
-                                  <CheckCircle2 size={13} />
-                                  {isSavingItem ? '...' : 'OK'}
-                                </button>
-                                <button
-                                  onClick={handleCancelEdit}
-                                  title="Cancelar (Esc)"
-                                  style={{
-                                    background: 'rgba(244,63,94,0.18)',
-                                    border: '1px solid rgba(244,63,94,0.5)',
-                                    color: '#fb7185',
-                                    borderRadius: '6px',
-                                    padding: '5px 7px',
-                                    cursor: 'pointer',
-                                    fontSize: '0.72rem',
-                                    display: 'flex',
-                                    alignItems: 'center'
-                                  }}
-                                >
-                                  <X size={13} />
-                                </button>
-                              </div>
-                            ) : (
-                              <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
-                                <button
-                                  onClick={() => handleStartEdit(it)}
-                                  title="Editar este producto en prelista"
-                                  style={{
-                                    background: 'rgba(99,102,241,0.18)',
-                                    border: '1px solid rgba(99,102,241,0.4)',
-                                    color: '#a5b4fc',
-                                    borderRadius: '6px',
-                                    padding: '5px 10px',
-                                    cursor: 'pointer',
-                                    fontSize: '0.72rem',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '4px',
-                                    fontWeight: 600
-                                  }}
-                                >
-                                  ✏️ Editar
-                                </button>
-                              </div>
-                            )}
-                          </td>
+                          {canSeeCosts && (
+                            <td style={{ textAlign: 'center', padding: '8px 6px' }}>
+                              {isEditing ? (
+                                <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
+                                  <button
+                                    onClick={() => handleSaveItemEdit(it)}
+                                    disabled={isSavingItem}
+                                    title="Guardar cambios (Enter)"
+                                    style={{
+                                      background: 'rgba(16,185,129,0.25)',
+                                      border: '1px solid rgba(16,185,129,0.6)',
+                                      color: '#34d399',
+                                      borderRadius: '6px',
+                                      padding: '5px 9px',
+                                      cursor: 'pointer',
+                                      fontSize: '0.72rem',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '3px',
+                                      fontWeight: 600
+                                    }}
+                                  >
+                                    <CheckCircle2 size={13} />
+                                    {isSavingItem ? '...' : 'OK'}
+                                  </button>
+                                  <button
+                                    onClick={handleCancelEdit}
+                                    title="Cancelar (Esc)"
+                                    style={{
+                                      background: 'rgba(244,63,94,0.18)',
+                                      border: '1px solid rgba(244,63,94,0.5)',
+                                      color: '#fb7185',
+                                      borderRadius: '6px',
+                                      padding: '5px 7px',
+                                      cursor: 'pointer',
+                                      fontSize: '0.72rem',
+                                      display: 'flex',
+                                      alignItems: 'center'
+                                    }}
+                                  >
+                                    <X size={13} />
+                                  </button>
+                                </div>
+                              ) : (
+                                <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
+                                  <button
+                                    onClick={() => handleStartEdit(it)}
+                                    title="Editar este producto en prelista"
+                                    style={{
+                                      background: 'rgba(99,102,241,0.18)',
+                                      border: '1px solid rgba(99,102,241,0.4)',
+                                      color: '#a5b4fc',
+                                      borderRadius: '6px',
+                                      padding: '5px 10px',
+                                      cursor: 'pointer',
+                                      fontSize: '0.72rem',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      fontWeight: 600
+                                    }}
+                                  >
+                                    ✏️ Editar
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          )}
                         </tr>
                       );
                     })}

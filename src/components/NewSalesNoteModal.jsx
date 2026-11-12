@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Plus, 
   Trash2, 
@@ -15,7 +16,9 @@ import {
   Printer,
   DollarSign,
   Calendar,
-  Clock
+  Clock,
+  Save,
+  RefreshCw
 } from 'lucide-react';
 
 // Searchable Combobox for selecting products from entire 5,400+ DB
@@ -51,44 +54,18 @@ function ProductSearchCombobox({ products, item, onSelectProduct, onClearProduct
 
   if (item.product_id) {
     return (
-      <div style={{
-        background: 'rgba(6, 182, 212, 0.08)',
-        border: '1px solid rgba(6, 182, 212, 0.35)',
-        borderRadius: '8px',
-        padding: '5px 8px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: '6px',
-        minHeight: '44px'
-      }}>
-        <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
-            <span style={{ 
-              fontFamily: 'monospace', 
-              fontWeight: 800, 
-              color: 'var(--cyan-primary)', 
-              fontSize: '0.74rem',
-              background: 'rgba(6, 182, 212, 0.15)',
-              padding: '1px 5px',
-              borderRadius: '4px',
-              flexShrink: 0
-            }}>
+      <div className="bg-cyan-50/70 dark:bg-cyan-950/30 border border-cyan-200 dark:border-cyan-500/35 rounded-xl p-2 sm:p-2.5 flex items-center justify-between gap-2 min-h-[44px]">
+        <div className="flex flex-col overflow-hidden flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 overflow-hidden">
+            <span className="font-mono font-black text-cyan-700 dark:text-cyan-300 text-[11px] bg-cyan-100/70 dark:bg-cyan-500/20 px-1.5 py-0.5 rounded shrink-0 border border-cyan-200 dark:border-cyan-500/30">
               {item.sku}
             </span>
-            <span style={{
-              fontSize: '0.76rem',
-              fontWeight: 600,
-              color: '#f8fafc',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap'
-            }}>
+            <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
               {item.description}
             </span>
           </div>
-          <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)', marginTop: '2px', display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <span style={{ color: (item.stock_now || 0) > 0 ? '#34d399' : '#fb7185', fontWeight: 700 }}>
+          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 flex gap-2 items-center">
+            <span className={`font-bold ${(item.stock_now || 0) > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400'}`}>
               Stock: {item.stock_now || 0}
             </span>
             <span>• {item.units_per_box || 1} u/cj</span>
@@ -101,23 +78,22 @@ function ProductSearchCombobox({ products, item, onSelectProduct, onClearProduct
             setSearchTerm('');
             setTimeout(() => setIsOpen(true), 50);
           }}
-          className="btn btn-secondary"
+          className="p-1.5 text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/20 rounded-lg transition-colors shrink-0 cursor-pointer"
           title="Cambiar producto / Buscar otro"
-          style={{ padding: '4px 6px', fontSize: '0.68rem', height: '24px', border: 'none', color: '#fb7185' }}
         >
-          <X size={14} />
+          <X size={15} />
         </button>
       </div>
     );
   }
 
   return (
-    <div ref={containerRef} style={{ position: 'relative', width: '100%' }}>
-      <div style={{ position: 'relative' }}>
-        <Search size={14} color="var(--text-muted)" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+    <div ref={containerRef} className="relative w-full">
+      <div className="relative">
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
         <input
           type="text"
-          className="form-input"
+          className="form-input pl-9 text-xs sm:text-sm h-10 sm:h-11 w-full bg-white dark:bg-slate-800 text-slate-900 dark:text-white border-slate-300 dark:border-slate-700 rounded-xl"
           placeholder="Buscar por código (SKU) o nombre..."
           value={searchTerm}
           onChange={e => {
@@ -125,27 +101,13 @@ function ProductSearchCombobox({ products, item, onSelectProduct, onClearProduct
             setIsOpen(true);
           }}
           onFocus={() => setIsOpen(true)}
-          style={{ paddingLeft: '30px', fontSize: '0.78rem', height: '42px' }}
         />
       </div>
 
       {isOpen && (
-        <div style={{
-          position: 'absolute',
-          top: '100%',
-          left: 0,
-          right: 0,
-          zIndex: 9999,
-          background: '#090d16',
-          border: '1px solid rgba(6, 182, 212, 0.4)',
-          boxShadow: '0 12px 35px rgba(0,0,0,0.9)',
-          borderRadius: '8px',
-          maxHeight: '270px',
-          overflowY: 'auto',
-          marginTop: '4px'
-        }}>
+        <div className="absolute top-full left-0 right-0 z-50 bg-white dark:bg-slate-900 border border-slate-200 dark:border-cyan-500/40 shadow-2xl rounded-xl max-h-64 overflow-y-auto mt-1 p-1 text-slate-800 dark:text-slate-100 divide-y divide-slate-100 dark:divide-slate-800">
           {filteredProducts.length === 0 ? (
-            <div style={{ padding: '12px', textAlign: 'center', fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+            <div className="p-3 text-center text-xs text-slate-500 dark:text-slate-400">
               No se encontraron productos con "{searchTerm}"
             </div>
           ) : (
@@ -159,59 +121,31 @@ function ProductSearchCombobox({ products, item, onSelectProduct, onClearProduct
                     setIsOpen(false);
                     setSearchTerm('');
                   }}
-                  style={{
-                    padding: '8px 10px',
-                    borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
-                    cursor: 'pointer',
-                    transition: 'background 0.15s ease'
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(6, 182, 212, 0.18)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  className="p-2 sm:p-2.5 hover:bg-cyan-50 dark:hover:bg-cyan-500/20 cursor-pointer rounded-lg transition-colors"
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
-                      <span style={{
-                        fontFamily: 'monospace',
-                        fontWeight: 800,
-                        color: 'var(--cyan-primary)',
-                        fontSize: '0.74rem',
-                        background: 'rgba(6, 182, 212, 0.15)',
-                        padding: '1px 5px',
-                        borderRadius: '3px',
-                        whiteSpace: 'nowrap'
-                      }}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 overflow-hidden flex-1 min-w-0">
+                      <span className="font-mono font-black text-cyan-700 dark:text-cyan-300 text-[11px] bg-cyan-50 dark:bg-cyan-500/20 px-1.5 py-0.5 rounded border border-cyan-200 dark:border-cyan-500/30 shrink-0">
                         {p.sku}
                       </span>
-                      <span style={{ fontSize: '0.76rem', fontWeight: 600, color: '#f8fafc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
                         {p.name}
                       </span>
                     </div>
-                    <span style={{
-                      fontSize: '0.67rem',
-                      fontWeight: 700,
-                      padding: '2px 6px',
-                      borderRadius: '4px',
-                      background: hasStock ? 'rgba(16, 185, 129, 0.15)' : 'rgba(244, 63, 94, 0.15)',
-                      color: hasStock ? '#34d399' : '#fb7185',
-                      whiteSpace: 'nowrap'
-                    }}>
+                    <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded border shrink-0 ${
+                      hasStock 
+                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30' 
+                        : 'bg-rose-50 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300 border-rose-200 dark:border-rose-500/30'
+                    }`}>
                       Stock: {p.current_stock || 0}
                     </span>
                   </div>
 
-                  <div style={{
-                    marginTop: '4px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    fontSize: '0.68rem',
-                    color: 'var(--text-muted)',
-                    flexWrap: 'wrap'
-                  }}>
+                  <div className="mt-1 flex items-center gap-2 sm:gap-3 text-[11px] text-slate-500 dark:text-slate-400 flex-wrap">
                     <span>📦 Cj: {p.units_per_box || 1} u</span>
-                    <span style={{ color: '#38bdf8', fontWeight: 600 }}>Mayor: Bs {p.wholesale_price || 0}</span>
-                    <span style={{ color: '#fbbf24', fontWeight: 600 }}>Caja: Bs {p.box_price || 0}</span>
-                    <span style={{ color: '#c084fc', fontWeight: 600 }}>Esp: Bs {p.special_price || 0}</span>
+                    <span className="text-cyan-600 dark:text-cyan-400 font-bold">May: Bs {p.wholesale_price || 0}</span>
+                    <span className="text-amber-600 dark:text-amber-400 font-bold">Caj: Bs {p.box_price || 0}</span>
+                    <span className="text-purple-600 dark:text-purple-400 font-bold">Esp: Bs {p.special_price || 0}</span>
                   </div>
                 </div>
               );
@@ -397,7 +331,8 @@ export default function NewSalesNoteModal({
         setNewCustomerLocationUrl('');
         setDate(new Date().toISOString().split('T')[0]);
         setDueDate(new Date().toISOString().split('T')[0]);
-        setSellerName('DANIEL');
+        const activeCreator = getActiveSessionUserName();
+        setSellerName(activeCreator);
         setDeliveryType('A su tienda');
         setDestination('');
         setDeliveryLocationUrl('');
@@ -434,7 +369,7 @@ export default function NewSalesNoteModal({
             amount_qr: '',
             qr_account: 'CUENTA JAIME',
             payment_date: new Date().toISOString().split('T')[0],
-            registered_by: 'DANIEL'
+            registered_by: activeCreator
           }
         ]);
       }
@@ -659,19 +594,37 @@ export default function NewSalesNoteModal({
     }));
   };
 
-  // Add New Payment row
+  // Add New Payment row (Always Mixed / Direct Efectivo + QR)
   const handleAddNewPayment = () => {
+    let activeSessionName = sellerName || 'ENCARGADO EN TURNO';
+    try {
+      const savedAuth = localStorage.getItem('siscontrol_auth_session');
+      if (savedAuth) {
+        const parsed = JSON.parse(savedAuth);
+        if (parsed?.user?.name) activeSessionName = parsed.user.name.toUpperCase();
+      } else {
+        const savedActive = localStorage.getItem('siscontrol_active_user');
+        if (savedActive) {
+          const parsed = JSON.parse(savedActive);
+          if (parsed?.name) activeSessionName = parsed.name.toUpperCase();
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+
     setNewPayments(prev => [
       ...prev,
       {
         tempId: Date.now() + Math.random(),
-        payment_method: 'POR EFECTIVO',
+        payment_method: 'POR EFECTIVO Y TRANSFERENCIA',
         amount: '',
         amount_cash: '',
         amount_qr: '',
+        amount_discount: '',
         qr_account: 'CUENTA JAIME',
         payment_date: new Date().toISOString().split('T')[0],
-        registered_by: sellerName || 'DANIEL'
+        registered_by: activeSessionName
       }
     ]);
   };
@@ -740,7 +693,8 @@ export default function NewSalesNoteModal({
     if (p.payment_method === 'POR EFECTIVO Y TRANSFERENCIA') {
       const c = parseFloat(p.amount_cash) || 0;
       const q = parseFloat(p.amount_qr) || 0;
-      return acc + c + q;
+      const d = parseFloat(p.amount_discount) || 0;
+      return acc + c + q + d;
     }
     return acc + (parseFloat(p.amount) || 0);
   }, 0);
@@ -829,6 +783,7 @@ export default function NewSalesNoteModal({
             if (p.payment_method === 'POR EFECTIVO Y TRANSFERENCIA') {
               const cash = parseFloat(p.amount_cash) || 0;
               const qr = parseFloat(p.amount_qr) || 0;
+              const disc = parseFloat(p.amount_discount) || 0;
               const qrAcc = p.qr_account || 'CUENTA JAIME';
 
               if (cash > 0) {
@@ -847,6 +802,16 @@ export default function NewSalesNoteModal({
                   payment_method: `POR TRANSFERENCIA QR ${qrAcc}`,
                   account_info: `Parte QR ${qrAcc} (Pago Mixto)`,
                   amount: qr,
+                  payment_date: p.payment_date || date,
+                  registered_by: p.registered_by || sellerName || 'DANIEL'
+                });
+              }
+              if (disc > 0) {
+                list.push({
+                  is_new: true,
+                  payment_method: 'REBAJA / DESCUENTO',
+                  account_info: 'Rebaja / Descuento aplicado',
+                  amount: disc,
                   payment_date: p.payment_date || date,
                   registered_by: p.registered_by || sellerName || 'DANIEL'
                 });
@@ -919,68 +884,54 @@ export default function NewSalesNoteModal({
 
   if (!isOpen) return null;
 
-  return (
-    <div className="modal-overlay" style={{ zIndex: 1050 }}>
+  return createPortal(
+    <div style={{
+      position: 'fixed',
+      inset: 0,
+      zIndex: 9999,
+      background: 'rgba(5, 10, 24, 0.78)',
+      backdropFilter: 'blur(8px)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '8px'
+    }}>
       <div 
-        className="modal-content" 
-        style={{ 
-          maxWidth: '1050px', 
-          width: '95%',
-          maxHeight: '94vh',
-          display: 'flex',
-          flexDirection: 'column'
-        }}
+        className="w-full max-w-[1050px] h-[94dvh] sm:h-auto sm:max-h-[92dvh] flex flex-col rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800"
       >
-        {/* Header */}
-        <div style={{
-          padding: '20px 24px',
-          borderBottom: '1px solid var(--border-glass)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          background: 'var(--bg-modal-header, rgba(10, 16, 30, 0.95))'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{
-              width: '42px',
-              height: '42px',
-              borderRadius: '12px',
-              background: 'linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#ffffff',
-              boxShadow: '0 0 15px rgba(6, 182, 212, 0.4)'
-            }}>
-              <Package size={22} />
+        {/* Header Compacto y Responsivo */}
+        <div className="px-3.5 py-2.5 sm:px-5 sm:py-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center gap-2 bg-white dark:bg-slate-900 shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white shadow-md shadow-cyan-500/30 shrink-0">
+              <Package size={19} />
             </div>
-            <div>
-              <h3 className="font-heading" style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-main, #f8fafc)', margin: 0 }}>
-                {noteToEdit ? `Editar Pedido / Nota: ${noteToEdit.note_code}` : 'Emitir Nota de Despacho & Venta'}
+            <div className="min-w-0 flex-1">
+              <h3 className="font-heading text-sm sm:text-lg font-black text-slate-900 dark:text-white m-0 truncate">
+                {noteToEdit ? `Editar Nota: ${noteToEdit.note_code}` : 'Emitir Nota de Despacho & Venta'}
               </h3>
-              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0 }}>
+              <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 m-0 truncate">
                 {noteToEdit
-                  ? `Cliente: ${selectedCustomer?.name || noteToEdit.customer_name} • Ajusta cajas, agrega o quita productos (Stock sincronizado)`
+                  ? `Cliente: ${selectedCustomer?.name || noteToEdit.customer_name}`
                   : selectedCustomer 
-                    ? `Cliente: ${selectedCustomer.name} • Cajas/unidades, abonos y almacén` 
-                    : 'Paso 1: Busca o registra al cliente para iniciar la nota de venta'}
+                    ? `Cliente: ${selectedCustomer.name}` 
+                    : 'Paso 1: Selecciona o registra al cliente'}
               </p>
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+
+          <div className="flex items-center gap-1.5 shrink-0">
             {noteToEdit && onOpenPrintNote && (
               <button
                 type="button"
                 onClick={() => onOpenPrintNote(noteToEdit)}
-                className="btn btn-secondary"
-                style={{ fontSize: '0.78rem', padding: '6px 12px', gap: '6px' }}
-                title="Ver vista de impresión y WhatsApp"
+                className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                title="Ver comprobante de impresión y WhatsApp"
               >
-                <Printer size={15} />
-                <span>Ver Comprobante</span>
+                <Printer size={14} />
+                <span className="hidden sm:inline">Ver Comprobante</span>
               </button>
             )}
-            <button onClick={onClose} className="btn btn-secondary" style={{ padding: '6px', border: 'none' }}>
+            <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer">
               <X size={20} />
             </button>
           </div>
@@ -1010,26 +961,15 @@ export default function NewSalesNoteModal({
             {!isCreatingCustomer ? (
               <div>
                 {/* Search & Action Banner */}
-                <div style={{
-                  background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.08) 0%, rgba(99, 102, 241, 0.08) 100%)',
-                  border: '1px solid rgba(6, 182, 212, 0.3)',
-                  borderRadius: '14px',
-                  padding: '20px',
-                  marginBottom: '20px',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: '14px'
-                }}>
+                <div className="bg-gradient-to-r from-cyan-50/80 to-indigo-50/80 dark:from-cyan-950/30 dark:to-indigo-950/30 border border-cyan-200 dark:border-cyan-500/40 rounded-2xl p-4 sm:p-5 mb-5 flex justify-between items-center flex-wrap gap-3.5">
                   <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <User size={20} color="var(--cyan-primary)" />
-                      <h4 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#f8fafc', margin: 0 }}>
+                    <div className="flex items-center gap-2">
+                      <User size={20} className="text-cyan-600 dark:text-cyan-400" />
+                      <h4 className="text-base sm:text-lg font-black text-slate-900 dark:text-white m-0">
                         ¿A qué cliente se emitirá esta nota?
                       </h4>
                     </div>
-                    <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: '4px 0 0' }}>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 mb-0">
                       Busca un cliente registrado en la base de datos o crea uno nuevo al instante.
                     </p>
                   </div>
@@ -1041,8 +981,7 @@ export default function NewSalesNoteModal({
                       setNewCustomerName(customerSearch.trim());
                       setErrorMessage('');
                     }}
-                    className="btn btn-primary"
-                    style={{ padding: '9px 18px', fontSize: '0.84rem', fontWeight: 700, gap: '8px' }}
+                    className="btn btn-primary py-2 px-4 text-xs font-bold gap-2 cursor-pointer"
                   >
                     <Plus size={16} />
                     <span>+ Crear Nuevo Cliente</span>
@@ -1050,38 +989,21 @@ export default function NewSalesNoteModal({
                 </div>
 
                 {/* Search Input */}
-                <div style={{ position: 'relative', marginBottom: '16px' }}>
-                  <Search size={18} color="var(--text-muted)" style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)' }} />
+                <div className="relative mb-4">
+                  <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     type="text"
-                    className="form-input"
+                    className="form-input pl-11 h-12 text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white border-cyan-500/40 rounded-xl w-full"
                     placeholder="Buscar por nombre de cliente, teléfono, código o dirección / mercado..."
                     value={customerSearch}
                     onChange={e => setCustomerSearch(e.target.value)}
                     autoFocus
-                    style={{
-                      paddingLeft: '46px',
-                      height: '48px',
-                      fontSize: '0.92rem',
-                      borderRadius: '12px',
-                      border: '1px solid rgba(6, 182, 212, 0.4)',
-                      background: 'rgba(15, 23, 42, 0.7)'
-                    }}
                   />
                   {customerSearch && (
                     <button
                       type="button"
                       onClick={() => setCustomerSearch('')}
-                      style={{
-                        position: 'absolute',
-                        right: '14px',
-                        top: '50%',
-                        transform: 'translateY(-50%)',
-                        background: 'transparent',
-                        border: 'none',
-                        color: 'var(--text-muted)',
-                        cursor: 'pointer'
-                      }}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
                     >
                       <X size={18} />
                     </button>
@@ -1089,32 +1011,19 @@ export default function NewSalesNoteModal({
                 </div>
 
                 {/* Subtitle */}
-                <div style={{ marginBottom: '12px', fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <div className="mb-3 text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">
                   {customerSearch.trim() ? `Resultados de búsqueda (${filteredCustomers.length}):` : 'Clientes Registrados en Base de Datos:'}
                 </div>
 
                 {/* Customer List */}
-                <div style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '10px',
-                  maxHeight: '440px',
-                  overflowY: 'auto',
-                  paddingRight: '6px'
-                }}>
+                <div className="flex flex-col gap-2.5 max-h-[440px] overflow-y-auto pr-1">
                   {filteredCustomers.length === 0 ? (
-                    <div style={{
-                      textAlign: 'center',
-                      padding: '40px 20px',
-                      background: 'rgba(0, 0, 0, 0.2)',
-                      borderRadius: '12px',
-                      border: '1px dashed var(--border-subtle)'
-                    }}>
-                      <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🔍</div>
-                      <div style={{ fontWeight: 700, color: '#f8fafc', fontSize: '0.95rem' }}>
+                    <div className="text-center p-8 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700">
+                      <div className="text-3xl mb-2">🔍</div>
+                      <div className="font-extrabold text-slate-900 dark:text-white text-base mb-1">
                         No se encontró ningún cliente con "{customerSearch}"
                       </div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px', marginBottom: '16px' }}>
+                      <div className="text-xs text-slate-500 dark:text-slate-400 mb-4">
                         Puedes registrarlo ahora mismo para continuar con la nota
                       </div>
                       <button
@@ -1124,8 +1033,7 @@ export default function NewSalesNoteModal({
                           setNewCustomerName(customerSearch.trim().toUpperCase());
                           setErrorMessage('');
                         }}
-                        className="btn btn-emerald"
-                        style={{ padding: '8px 18px', fontSize: '0.84rem', fontWeight: 700, gap: '6px' }}
+                        className="btn btn-emerald text-xs py-2 px-4 font-bold gap-2 cursor-pointer mx-auto"
                       >
                         <Plus size={16} />
                         <span>Crear cliente "{customerSearch.trim()}"</span>
@@ -1136,75 +1044,42 @@ export default function NewSalesNoteModal({
                       <div
                         key={c.id}
                         onClick={() => handleSelectCustomer(c)}
-                        style={{
-                          background: 'rgba(15, 23, 42, 0.6)',
-                          border: '1px solid rgba(255, 255, 255, 0.08)',
-                          borderRadius: '12px',
-                          padding: '14px 18px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: '12px',
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease'
-                        }}
-                        onMouseEnter={e => {
-                          e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.5)';
-                          e.currentTarget.style.background = 'rgba(6, 182, 212, 0.08)';
-                          e.currentTarget.style.transform = 'translateY(-1px)';
-                        }}
-                        onMouseLeave={e => {
-                          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
-                          e.currentTarget.style.background = 'rgba(15, 23, 42, 0.6)';
-                          e.currentTarget.style.transform = 'none';
-                        }}
+                        className="bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 hover:border-cyan-500/60 hover:bg-cyan-50/50 dark:hover:bg-cyan-500/10 rounded-xl p-3.5 flex items-center justify-between gap-3 cursor-pointer transition-all shadow-xs"
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1, overflow: 'hidden' }}>
-                          <div style={{
-                            width: '42px',
-                            height: '42px',
-                            borderRadius: '10px',
-                            background: 'rgba(99, 102, 241, 0.2)',
-                            color: 'var(--indigo-brand)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontWeight: 800,
-                            fontSize: '1rem',
-                            flexShrink: 0
-                          }}>
+                        <div className="flex items-center gap-3.5 flex-1 min-w-0">
+                          <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30 flex items-center justify-center font-black text-sm shrink-0">
                             {(c.name || 'C').slice(0, 2).toUpperCase()}
                           </div>
 
-                          <div style={{ overflow: 'hidden', flex: 1 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                              <span style={{ fontWeight: 800, color: '#f8fafc', fontSize: '0.96rem' }}>
+                          <div className="overflow-hidden flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-extrabold text-slate-900 dark:text-white text-sm sm:text-base">
                                 {c.name}
                               </span>
-                              <span className="badge badge-indigo" style={{ fontSize: '0.7rem', fontFamily: 'monospace' }}>
+                              <span className="badge badge-indigo text-[11px] font-mono">
                                 {c.code || `CLI-${c.id}`}
                               </span>
                             </div>
 
-                            <div style={{ display: 'flex', gap: '14px', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px', flexWrap: 'wrap' }}>
+                            <div className="flex gap-3 text-xs text-slate-500 dark:text-slate-400 mt-1 flex-wrap">
                               {c.phone ? (
-                                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <Phone size={12} color="var(--emerald-success)" /> {c.phone}
+                                <span className="flex items-center gap-1">
+                                  <Phone size={12} className="text-emerald-500" /> {c.phone}
                                 </span>
                               ) : (
-                                <span style={{ color: '#64748b' }}>Sin teléfono</span>
+                                <span className="text-slate-400">Sin teléfono</span>
                               )}
 
                               {c.address ? (
-                                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <MapPin size={12} color="var(--cyan-primary)" /> {c.address}
+                                <span className="flex items-center gap-1">
+                                  <MapPin size={12} className="text-cyan-500" /> {c.address}
                                 </span>
                               ) : (
-                                <span style={{ color: '#64748b' }}>Sin dirección</span>
+                                <span className="text-slate-400">Sin dirección</span>
                               )}
 
                               {c.store_location_url && (
-                                <span style={{ color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                                <span className="text-cyan-600 dark:text-cyan-400 font-semibold flex items-center gap-1">
                                   📍 Ubicación GPS
                                 </span>
                               )}
@@ -1214,14 +1089,7 @@ export default function NewSalesNoteModal({
 
                         <button
                           type="button"
-                          className="btn btn-primary"
-                          style={{
-                            padding: '8px 16px',
-                            fontSize: '0.8rem',
-                            fontWeight: 700,
-                            flexShrink: 0,
-                            gap: '6px'
-                          }}
+                          className="btn btn-primary text-xs py-2 px-3.5 font-bold gap-1.5 shrink-0"
                         >
                           <span>Crear Nota</span>
                           <span>→</span>
@@ -1233,31 +1101,17 @@ export default function NewSalesNoteModal({
               </div>
             ) : (
               /* Inline New Customer Creation Form */
-              <div style={{
-                background: 'rgba(15, 23, 42, 0.7)',
-                border: '1px solid rgba(6, 182, 212, 0.4)',
-                borderRadius: '16px',
-                padding: '24px'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{
-                      width: '36px',
-                      height: '36px',
-                      borderRadius: '8px',
-                      background: 'rgba(16, 185, 129, 0.18)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'var(--emerald-success)'
-                    }}>
+              <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 rounded-2xl p-4 sm:p-6 mb-5">
+                <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30 flex items-center justify-center shrink-0">
                       <User size={20} />
                     </div>
                     <div>
-                      <h4 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#f8fafc', margin: 0 }}>
+                      <h4 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white m-0">
                         Registrar Nuevo Cliente
                       </h4>
-                      <p style={{ fontSize: '0.76rem', color: 'var(--text-muted)', margin: 0 }}>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 m-0">
                         Se guardará en la cartera de clientes y se iniciará la nota para él de inmediato.
                       </p>
                     </div>
@@ -1269,26 +1123,24 @@ export default function NewSalesNoteModal({
                       setIsCreatingCustomer(false);
                       setErrorMessage('');
                     }}
-                    className="btn btn-secondary"
-                    style={{ fontSize: '0.78rem', padding: '6px 12px' }}
+                    className="btn btn-secondary text-xs py-1.5 px-3"
                   >
                     ← Volver al Buscador
                   </button>
                 </div>
 
                 <form onSubmit={handleCreateAndSelectCustomer}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
                     <div>
                       <label className="form-label">Nombre del Cliente / Negocio *</label>
                       <input
                         type="text"
-                        className="form-input"
+                        className="form-input text-sm h-11"
                         placeholder="Ej. ERICK GARCIA o COMERCIAL HNOS."
                         value={newCustomerName}
                         onChange={e => setNewCustomerName(e.target.value)}
                         autoFocus
                         required
-                        style={{ height: '42px', fontSize: '0.88rem' }}
                       />
                     </div>
 
@@ -1296,11 +1148,10 @@ export default function NewSalesNoteModal({
                       <label className="form-label">Teléfono / WhatsApp</label>
                       <input
                         type="text"
-                        className="form-input"
+                        className="form-input text-sm h-11"
                         placeholder="Ej. 68579599"
                         value={newCustomerPhone}
                         onChange={e => setNewCustomerPhone(e.target.value)}
-                        style={{ height: '42px', fontSize: '0.88rem' }}
                       />
                     </div>
 
@@ -1308,11 +1159,10 @@ export default function NewSalesNoteModal({
                       <label className="form-label">Dirección / Mercado del Cliente</label>
                       <input
                         type="text"
-                        className="form-input"
+                        className="form-input text-sm h-11"
                         placeholder="Ej. MERCADO LA PAMPA / PASILLO 3"
                         value={newCustomerAddress}
                         onChange={e => setNewCustomerAddress(e.target.value)}
-                        style={{ height: '42px', fontSize: '0.88rem' }}
                       />
                     </div>
 
@@ -1320,29 +1170,26 @@ export default function NewSalesNoteModal({
                       <label className="form-label">Link Ubicación Google Maps / GPS de su tienda (Opcional)</label>
                       <input
                         type="text"
-                        className="form-input"
+                        className="form-input text-sm h-11"
                         placeholder="https://maps.app.goo.gl/... o enlace GPS"
                         value={newCustomerLocationUrl}
                         onChange={e => setNewCustomerLocationUrl(e.target.value)}
-                        style={{ height: '42px', fontSize: '0.88rem' }}
                       />
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                  <div className="flex justify-end gap-3">
                     <button
                       type="button"
                       onClick={() => setIsCreatingCustomer(false)}
-                      className="btn btn-secondary"
-                      style={{ padding: '10px 18px' }}
+                      className="btn btn-secondary py-2.5 px-4 text-xs font-bold"
                     >
                       Cancelar
                     </button>
                     <button
                       type="submit"
                       disabled={isSavingCustomer}
-                      className="btn btn-primary"
-                      style={{ padding: '10px 24px', fontWeight: 800, gap: '8px' }}
+                      className="btn btn-primary py-2.5 px-6 font-black text-sm gap-2"
                     >
                       {isSavingCustomer ? (
                         <span>Guardando...</span>
@@ -1360,169 +1207,134 @@ export default function NewSalesNoteModal({
           </div>
         ) : (
           /* Step 2: Form Body with Customer Locked In */
-          <form onSubmit={handleSubmit} style={{ overflowY: 'auto', padding: '24px', flex: 1 }}>
-            {/* Locked Customer Header Card */}
-            <div style={{
-              background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.12) 0%, rgba(99, 102, 241, 0.12) 100%)',
-              border: '1px solid rgba(6, 182, 212, 0.45)',
-              borderRadius: '14px',
-              padding: '16px 20px',
-              marginBottom: '20px',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: '12px'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                <div style={{
-                  width: '46px',
-                  height: '46px',
-                  borderRadius: '12px',
-                  background: 'linear-gradient(135deg, #06b6d4 0%, #6366f1 100%)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#ffffff',
-                  fontWeight: 900,
-                  fontSize: '1.15rem',
-                  boxShadow: '0 4px 14px rgba(6, 182, 212, 0.3)'
-                }}>
-                  {(selectedCustomer.name || 'C').slice(0, 2).toUpperCase()}
-                </div>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '1.15rem', fontWeight: 900, color: '#f8fafc' }}>
-                      {selectedCustomer.name}
-                    </span>
-                    <span className="badge badge-indigo" style={{ fontSize: '0.72rem', fontFamily: 'monospace' }}>
-                      {selectedCustomer.code || `CLI-${selectedCustomer.id}`}
-                    </span>
-                    <span className="badge badge-emerald" style={{ fontSize: '0.7rem' }}>
-                      ✓ Cliente Asignado
-                    </span>
+          <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+            <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-4">
+              {/* Locked Customer Header Card */}
+              <div className="bg-gradient-to-r from-cyan-50/80 to-indigo-50/80 dark:from-cyan-950/30 dark:to-indigo-950/30 border border-cyan-200 dark:border-cyan-500/40 rounded-2xl p-3 sm:p-4 flex justify-between items-center flex-wrap gap-2.5">
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                  <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br from-cyan-500 to-indigo-600 flex items-center justify-center text-white font-black text-xs sm:text-base shadow-md shadow-cyan-500/30 shrink-0">
+                    {(selectedCustomer.name || 'C').slice(0, 2).toUpperCase()}
                   </div>
-                  <div style={{ display: 'flex', gap: '16px', fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '4px', flexWrap: 'wrap' }}>
-                    {selectedCustomer.phone && (
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <Phone size={13} color="var(--emerald-success)" /> {selectedCustomer.phone}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-sm sm:text-lg font-black text-slate-900 dark:text-white truncate">
+                        {selectedCustomer.name}
                       </span>
-                    )}
-                    {selectedCustomer.address && (
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <MapPin size={13} color="var(--cyan-primary)" /> {selectedCustomer.address}
+                      <span className="badge badge-indigo text-[10px] font-mono">
+                        {selectedCustomer.code || `CLI-${selectedCustomer.id}`}
                       </span>
-                    )}
-                    {(selectedCustomer.store_location_url || deliveryLocationUrl) && (
-                      <a 
-                        href={deliveryLocationUrl || selectedCustomer.store_location_url} 
-                        target="_blank" 
-                        rel="noreferrer" 
-                        style={{ color: '#38bdf8', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}
-                      >
-                        <ExternalLink size={13} /> Ver Maps
-                      </a>
-                    )}
+                    </div>
+                    <div className="flex gap-2.5 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5 flex-wrap">
+                      {selectedCustomer.phone && (
+                        <span className="flex items-center gap-1">
+                          <Phone size={12} className="text-emerald-500" /> {selectedCustomer.phone}
+                        </span>
+                      )}
+                      {selectedCustomer.address && (
+                        <span className="flex items-center gap-1 truncate max-w-[200px] sm:max-w-none">
+                          <MapPin size={12} className="text-cyan-500 shrink-0" /> <span className="truncate">{selectedCustomer.address}</span>
+                        </span>
+                      )}
+                      {(selectedCustomer.store_location_url || deliveryLocationUrl) && (
+                        <a 
+                          href={deliveryLocationUrl || selectedCustomer.store_location_url} 
+                          target="_blank" 
+                          rel="noreferrer" 
+                          className="text-cyan-600 dark:text-cyan-400 font-semibold flex items-center gap-1 hover:underline"
+                        >
+                          <ExternalLink size={12} /> Ver Maps
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (items.some(i => i.product_id) && !window.confirm('¿Deseas seleccionar otro cliente para esta nota?')) {
+                      return;
+                    }
+                    setSelectedCustomer(null);
+                  }}
+                  className="px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shrink-0 shadow-xs"
+                  title="Cambiar cliente para esta nota"
+                >
+                  <RefreshCw size={12} />
+                  <span>Cambiar Cliente</span>
+                </button>
+              </div>
+
+              {/* General Note Logistics & Dates Bar */}
+              <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80 rounded-2xl p-3 sm:p-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3.5">
+                  {/* Encargado / Vendedor */}
+                  <div className="col-span-2 sm:col-span-1">
+                    <label className="form-label text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">Vendedor / Encargado</label>
+                    <select 
+                      className="form-select text-xs font-bold h-10 w-full" 
+                      style={{ padding: '6px 12px', lineHeight: '1.3' }}
+                      value={sellerName} 
+                      onChange={e => setSellerName(e.target.value)}
+                    >
+                      {sellerName && !['DANIEL', 'JAIME', 'MOSTRADOR TIENDA', 'VENTAS MAYORISTA'].includes(sellerName) && (
+                        <option value={sellerName}>{sellerName}</option>
+                      )}
+                      <option value="DANIEL">DANIEL</option>
+                      <option value="JAIME">JAIME</option>
+                      <option value="MOSTRADOR TIENDA">MOSTRADOR TIENDA</option>
+                      <option value="VENTAS MAYORISTA">VENTAS MAYORISTA</option>
+                    </select>
+                  </div>
+
+                  {/* Fecha Emisión */}
+                  <div>
+                    <label className="form-label text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">Fecha de Venta</label>
+                    <input 
+                      type="date" 
+                      className="form-input text-xs font-bold h-10 w-full" 
+                      style={{ padding: '6px 10px', lineHeight: '1.3' }}
+                      value={date} 
+                      onChange={e => setDate(e.target.value)}
+                      required 
+                    />
+                  </div>
+
+                  {/* Fecha Límite de Pago */}
+                  <div>
+                    <label className="form-label text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">Vencimiento (Crédito)</label>
+                    <input 
+                      type="date" 
+                      className="form-input text-xs font-bold h-10 w-full" 
+                      style={{ padding: '6px 10px', lineHeight: '1.3' }}
+                      value={dueDate} 
+                      onChange={e => setDueDate(e.target.value)}
+                    />
                   </div>
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  if (items.some(i => i.product_id) && !window.confirm('¿Deseas seleccionar otro cliente para esta nota?')) {
-                    return;
-                  }
-                  setSelectedCustomer(null);
-                }}
-                className="btn btn-secondary"
-                style={{ fontSize: '0.78rem', padding: '7px 14px', gap: '6px' }}
-                title="Cambiar cliente para esta nota"
-              >
-                🔄 Cambiar Cliente
-              </button>
-            </div>
-
-            {/* General Note Logistics & Dates Bar */}
-            <div style={{
-              background: 'rgba(0, 0, 0, 0.25)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: '14px',
-              padding: '16px 18px',
-              marginBottom: '20px'
-            }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
-                {/* Encargado / Vendedor */}
-                <div>
-                  <label className="form-label">Vendedor / Encargado</label>
-                  <select 
-                    className="form-select" 
-                    value={sellerName} 
-                    onChange={e => setSellerName(e.target.value)}
+              {/* Section 2: Items Table (Mixed Box / Unit) - 100% RESPONSIVE FOR MOBILE & DESKTOP */}
+              <div className="bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/80 rounded-2xl p-3 sm:p-5">
+                <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Boxes size={17} className="text-cyan-600 dark:text-cyan-400 shrink-0" />
+                    <span className="text-xs sm:text-sm font-black text-cyan-700 dark:text-cyan-300 uppercase tracking-wide">
+                      2. Productos ({items.length})
+                    </span>
+                  </div>
+                  <button 
+                    type="button" 
+                    onClick={handleAddItem}
+                    className="py-1.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer shadow-sm shrink-0"
                   >
-                    <option value="DANIEL">DANIEL</option>
-                    <option value="JAIME">JAIME</option>
-                    <option value="MOSTRADOR TIENDA">MOSTRADOR TIENDA</option>
-                    <option value="VENTAS MAYORISTA">VENTAS MAYORISTA</option>
-                  </select>
+                    <Plus size={14} />
+                    <span>Agregar Producto</span>
+                  </button>
                 </div>
 
-                {/* Fecha Emisión */}
-                <div>
-                  <label className="form-label">Fecha de Venta</label>
-                  <input 
-                    type="date" 
-                    className="form-input" 
-                    value={date} 
-                    onChange={e => setDate(e.target.value)}
-                    required 
-                  />
-                </div>
-
-                {/* Fecha Límite de Pago */}
-                <div>
-                  <label className="form-label">Fecha Límite de Pago (Crédito)</label>
-                  <input 
-                    type="date" 
-                    className="form-input" 
-                    value={dueDate} 
-                    onChange={e => setDueDate(e.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
-
-          {/* Section 2: Items Table (Mixed Box / Unit) */}
-          <div style={{
-            background: 'rgba(0, 0, 0, 0.25)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: '14px',
-            padding: '18px',
-            marginBottom: '20px'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Boxes size={18} color="var(--cyan-primary)" />
-                <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--cyan-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  2. Mercadería & Detalle de Productos
-                </span>
-                <span className="badge badge-indigo" style={{ fontSize: '0.7rem' }}>
-                  Soporte Cajas & Unidades
-                </span>
-              </div>
-              <button 
-                type="button" 
-                onClick={handleAddItem}
-                className="btn btn-emerald"
-                style={{ fontSize: '0.76rem', padding: '6px 12px', gap: '6px' }}
-              >
-                <Plus size={14} />
-                <span>+ Agregar Producto</span>
-              </button>
-            </div>
-
-            {/* Items Dynamic Rows */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {/* Items Dynamic Rows: Responsive Card on Mobile, Single Row on Desktop */}
+            <div className="flex flex-col gap-3">
               {items.map((it, idx) => {
                 const isBox = it.sale_mode === 'CAJA';
                 const rowSubtotal = isBox 
@@ -1532,22 +1344,25 @@ export default function NewSalesNoteModal({
                 return (
                   <div 
                     key={it.id} 
-                    style={{
-                      background: 'rgba(15, 23, 42, 0.6)',
-                      border: '1px solid var(--border-glass)',
-                      borderRadius: '10px',
-                      padding: '12px',
-                      display: 'grid',
-                      gridTemplateColumns: 'minmax(250px, 2.8fr) 95px 130px 175px 135px 95px 36px',
-                      gap: '10px',
-                      alignItems: 'center'
-                    }}
+                    className="rounded-xl border border-slate-200 dark:border-slate-700/80 p-3 sm:p-3.5 bg-white dark:bg-slate-800/80 shadow-xs flex flex-col lg:flex-row lg:items-center gap-3 transition-colors"
                   >
-                    {/* Product Searchable Combobox */}
-                    <div>
-                      <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>
-                        Producto ({it.stock_now ? `Stock: ${it.stock_now}` : 'Buscador'}) *
-                      </label>
+                    {/* 1. Producto (Buscador Combobox) */}
+                    <div className="flex-1 lg:flex-[2.5] min-w-0">
+                      <div className="flex items-center justify-between mb-1 lg:mb-0.5">
+                        <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                          #{idx + 1} Producto ({it.stock_now ? `Stock: ${it.stock_now}` : 'Buscador'}) *
+                        </label>
+                        {/* Mobile delete button placed conveniently in top right */}
+                        <button 
+                          type="button" 
+                          onClick={() => handleRemoveItem(it.id)}
+                          className="lg:hidden p-1 text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/20 rounded-lg transition-colors cursor-pointer"
+                          disabled={items.length <= 1}
+                          title="Eliminar este producto"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                       <ProductSearchCombobox 
                         products={products}
                         item={it}
@@ -1556,266 +1371,206 @@ export default function NewSalesNoteModal({
                       />
                     </div>
 
-                    {/* Mode Toggle (Caja vs Unidad) */}
-                    <div>
-                      <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>
-                        Modalidad
-                      </label>
-                      <select 
-                        className="form-select"
-                        value={it.sale_mode}
-                        onChange={e => handleSaleModeChange(it.id, e.target.value)}
-                        style={{ fontSize: '0.76rem', fontWeight: 700, color: isBox ? 'var(--cyan-primary)' : '#fbbf24', height: '42px' }}
-                      >
-                        <option value="CAJA">📦 Caja</option>
-                        <option value="UNIDAD">🔢 Unidad</option>
-                      </select>
-                    </div>
-
-                    {/* Quantity or Boxes Inputs */}
-                    {isBox ? (
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
-                        <div>
-                          <label style={{ fontSize: '0.66rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>
-                            Cajas
-                          </label>
-                          <input 
-                            type="number" 
-                            min="1"
-                            className="form-input"
-                            value={it.boxes_count}
-                            onChange={e => handleUpdateItem(it.id, 'boxes_count', e.target.value)}
-                            style={{ fontSize: '0.8rem', textAlign: 'center', fontWeight: 700, height: '42px', padding: '4px 2px' }}
-                            required
-                          />
-                        </div>
-
-                        <div>
-                          <label style={{ fontSize: '0.66rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>
-                            U/Cj
-                          </label>
-                          <input 
-                            type="number" 
-                            min="1"
-                            className="form-input"
-                            value={it.units_per_box}
-                            onChange={e => handleUpdateItem(it.id, 'units_per_box', e.target.value)}
-                            style={{ fontSize: '0.8rem', textAlign: 'center', height: '42px', padding: '4px 2px' }}
-                            required
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      <div>
-                        <label style={{ fontSize: '0.66rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>
-                          Cant. Unidades
+                    {/* Mobile Grid for Quantities & Mode (On Desktop it flows inline) */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:flex lg:items-center gap-2.5 lg:gap-3">
+                      {/* 2. Modalidad */}
+                      <div className="lg:w-28">
+                        <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                          Modalidad
                         </label>
+                        <select 
+                          className="form-select text-xs font-bold h-10 w-full"
+                          value={it.sale_mode}
+                          onChange={e => handleSaleModeChange(it.id, e.target.value)}
+                          style={{ color: isBox ? '#0284c7' : '#d97706', padding: '6px 10px', lineHeight: '1.3' }}
+                        >
+                          <option value="CAJA">Caja</option>
+                          <option value="UNIDAD">Unidad</option>
+                        </select>
+                      </div>
+
+                      {/* 3. Cajas & U/Cj (o Cantidad Unidades) */}
+                      {isBox ? (
+                        <div className="col-span-1 sm:col-span-2 lg:w-36 grid grid-cols-2 gap-1.5">
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                              Cajas
+                            </label>
+                            <input 
+                              type="number" 
+                              min="1"
+                              className="form-input text-xs font-black text-center h-10 w-full"
+                              style={{ padding: '6px 6px', lineHeight: '1.3' }}
+                              value={it.boxes_count}
+                              onChange={e => handleUpdateItem(it.id, 'boxes_count', e.target.value)}
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                              U/Cj
+                            </label>
+                            <input 
+                              type="number" 
+                              min="1"
+                              className="form-input text-xs font-bold text-center h-10 w-full"
+                              style={{ padding: '6px 6px', lineHeight: '1.3' }}
+                              value={it.units_per_box}
+                              onChange={e => handleUpdateItem(it.id, 'units_per_box', e.target.value)}
+                              required
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="col-span-1 sm:col-span-2 lg:w-36">
+                          <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                            Cant. Unidades
+                          </label>
+                          <input 
+                            type="number" 
+                            min="1"
+                            className="form-input text-xs font-black text-center h-10 w-full"
+                            style={{ padding: '6px 8px', lineHeight: '1.3' }}
+                            value={it.quantity}
+                            onChange={e => handleUpdateItem(it.id, 'quantity', e.target.value)}
+                            required
+                          />
+                        </div>
+                      )}
+
+                      {/* 4. Precio Unitario & Quick Chips */}
+                      <div className="col-span-2 sm:col-span-1 lg:w-44">
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                            Precio Unit. (Bs)
+                          </label>
+                          {it.price_type && (
+                            <span className="text-[10px] font-extrabold text-cyan-600 dark:text-cyan-400">
+                              {it.price_type === 'caja' ? 'Caja' : it.price_type === 'mayor' ? 'Mayor' : it.price_type === 'especial' ? 'Esp' : 'Manual'}
+                            </span>
+                          )}
+                        </div>
                         <input 
                           type="number" 
-                          min="1"
-                          className="form-input"
-                          value={it.quantity}
-                          onChange={e => handleUpdateItem(it.id, 'quantity', e.target.value)}
-                          style={{ fontSize: '0.8rem', textAlign: 'center', fontWeight: 700, height: '42px' }}
+                          step="0.01" 
+                          min="0"
+                          className="form-input text-xs font-black text-right h-9 w-full text-slate-900 dark:text-white" 
+                          style={{ padding: '6px 10px', lineHeight: '1.3' }}
+                          placeholder="0.00"
+                          value={it.unit_price}
+                          onChange={e => {
+                            const val = e.target.value;
+                            handleUpdateItem(it.id, {
+                              unit_price: val,
+                              price_type: 'manual'
+                            });
+                          }}
                           required
                         />
+                        {/* Quick pricing chips */}
+                        <div className="flex gap-1 mt-1 flex-wrap">
+                          {it.wholesale_price > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateItem(it.id, { unit_price: it.wholesale_price, price_type: 'mayor' })}
+                              className={`text-[10px] px-1.5 py-0.5 rounded font-bold cursor-pointer transition-colors ${
+                                it.price_type === 'mayor'
+                                  ? 'bg-cyan-100 text-cyan-800 dark:bg-cyan-500/30 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-500/50'
+                                  : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 hover:bg-slate-200 border border-slate-200 dark:border-slate-700'
+                              }`}
+                            >
+                              May: {it.wholesale_price}
+                            </button>
+                          )}
+                          {it.box_price > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateItem(it.id, { unit_price: it.box_price, price_type: 'caja' })}
+                              className={`text-[10px] px-1.5 py-0.5 rounded font-bold cursor-pointer transition-colors ${
+                                it.price_type === 'caja'
+                                  ? 'bg-amber-100 text-amber-900 dark:bg-amber-500/30 dark:text-amber-300 border border-amber-300 dark:border-amber-500/50'
+                                  : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 hover:bg-slate-200 border border-slate-200 dark:border-slate-700'
+                              }`}
+                            >
+                              Caj: {it.box_price}
+                            </button>
+                          )}
+                          {it.special_price > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateItem(it.id, { unit_price: it.special_price, price_type: 'especial' })}
+                              className={`text-[10px] px-1.5 py-0.5 rounded font-bold cursor-pointer transition-colors ${
+                                it.price_type === 'especial'
+                                  ? 'bg-purple-100 text-purple-900 dark:bg-purple-500/30 dark:text-purple-300 border border-purple-300 dark:border-purple-500/50'
+                                  : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 hover:bg-slate-200 border border-slate-200 dark:border-slate-700'
+                              }`}
+                            >
+                              Esp: {it.special_price}
+                            </button>
+                          )}
+                          {it.sale_price > 0 && it.sale_price !== it.wholesale_price && it.sale_price !== it.box_price && (
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateItem(it.id, { unit_price: it.sale_price, price_type: 'unit' })}
+                              className={`text-[10px] px-1.5 py-0.5 rounded font-bold cursor-pointer transition-colors ${
+                                it.price_type === 'unit'
+                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/30 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-500/50'
+                                  : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 hover:bg-slate-200 border border-slate-200 dark:border-slate-700'
+                              }`}
+                            >
+                              Det: {it.sale_price}
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    )}
+                    </div>
 
-                    {/* Unit Price with Quick Price Selector Chips */}
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
-                        <label style={{ fontSize: '0.66rem', color: 'var(--text-muted)' }}>
-                          Precio Unit. (Bs)
+                    {/* 5. Alistar en & Subtotal */}
+                    <div className="flex items-center justify-between lg:justify-end gap-3 pt-2.5 lg:pt-0 border-t border-slate-100 dark:border-slate-700/60 lg:border-t-0">
+                      {/* Alistar en */}
+                      <div className="w-36 sm:w-40 lg:w-36">
+                        <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                          Alistar en:
                         </label>
-                        {it.price_type && (
-                          <span style={{ fontSize: '0.62rem', fontWeight: 700, color: it.price_type === 'manual' ? '#fbbf24' : 'var(--cyan-primary)' }}>
-                            {it.price_type === 'caja' ? '📦 Caja' : it.price_type === 'mayor' ? '🏪 Mayor' : it.price_type === 'especial' ? '⭐ Esp' : '✏️ Manual'}
+                        <select 
+                          className="form-select text-xs font-bold h-10 w-full"
+                          style={{ padding: '6px 10px', lineHeight: '1.3' }}
+                          value={it.warehouse_source || 'ALMACEN'}
+                          onChange={e => handleUpdateItem(it.id, 'warehouse_source', e.target.value)}
+                        >
+                          <option value="ALMACEN">Almacén</option>
+                          <option value="TIENDA">Tienda</option>
+                          <option value="CASA CUBANO">C. Cubano</option>
+                        </select>
+                      </div>
+
+                      {/* Subtotal */}
+                      <div className="text-right lg:w-28 shrink-0">
+                        <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                          Subtotal
+                        </label>
+                        <div className="text-sm sm:text-base font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                          Bs {rowSubtotal.toFixed(2)}
+                        </div>
+                        {isBox && (
+                          <span className="text-[10px] text-slate-400 block">
+                            {(parseInt(it.boxes_count || 0, 10) * parseInt(it.units_per_box || 1, 10))} u.
                           </span>
                         )}
                       </div>
-                      <input 
-                        type="number" 
-                        step="0.01" 
-                        min="0"
-                        className="form-input" 
-                        placeholder="0.00"
-                        value={it.unit_price}
-                        onChange={e => {
-                          const val = e.target.value;
-                          handleUpdateItem(it.id, {
-                            unit_price: val,
-                            price_type: 'manual'
-                          });
-                        }}
-                        style={{ fontSize: '0.82rem', textAlign: 'right', fontWeight: 700, height: '30px' }}
-                        required
-                      />
 
-                      {/* Quick pricing chips */}
-                      <div style={{ display: 'flex', gap: '3px', marginTop: '3px', flexWrap: 'wrap' }}>
-                        {it.wholesale_price > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              handleUpdateItem(it.id, {
-                                unit_price: it.wholesale_price,
-                                price_type: 'mayor'
-                              });
-                            }}
-                            title={`Precio Mayor: Bs ${it.wholesale_price}`}
-                            style={{
-                              fontSize: '0.6rem',
-                              padding: '1px 3px',
-                              borderRadius: '3px',
-                              border: `1px solid ${it.price_type === 'mayor' ? 'var(--cyan-primary)' : 'rgba(255,255,255,0.1)'}`,
-                              background: it.price_type === 'mayor' ? 'rgba(6, 182, 212, 0.25)' : 'rgba(0,0,0,0.3)',
-                              color: it.price_type === 'mayor' ? '#38bdf8' : 'var(--text-muted)',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            May: {it.wholesale_price}
-                          </button>
-                        )}
-                        {it.box_price > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              handleUpdateItem(it.id, {
-                                unit_price: it.box_price,
-                                price_type: 'caja'
-                              });
-                            }}
-                            title={`Precio Caja: Bs ${it.box_price}`}
-                            style={{
-                              fontSize: '0.6rem',
-                              padding: '1px 3px',
-                              borderRadius: '3px',
-                              border: `1px solid ${it.price_type === 'caja' ? '#f59e0b' : 'rgba(255,255,255,0.1)'}`,
-                              background: it.price_type === 'caja' ? 'rgba(245, 158, 11, 0.25)' : 'rgba(0,0,0,0.3)',
-                              color: it.price_type === 'caja' ? '#fbbf24' : 'var(--text-muted)',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            Caj: {it.box_price}
-                          </button>
-                        )}
-                        {it.special_price > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              handleUpdateItem(it.id, {
-                                unit_price: it.special_price,
-                                price_type: 'especial'
-                              });
-                            }}
-                            title={`Precio Especial: Bs ${it.special_price}`}
-                            style={{
-                              fontSize: '0.6rem',
-                              padding: '1px 3px',
-                              borderRadius: '3px',
-                              border: `1px solid ${it.price_type === 'especial' ? '#a855f7' : 'rgba(255,255,255,0.1)'}`,
-                              background: it.price_type === 'especial' ? 'rgba(168, 85, 247, 0.25)' : 'rgba(0,0,0,0.3)',
-                              color: it.price_type === 'especial' ? '#c084fc' : 'var(--text-muted)',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            Esp: {it.special_price}
-                          </button>
-                        )}
-                        {it.sale_price > 0 && it.sale_price !== it.wholesale_price && it.sale_price !== it.box_price && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              handleUpdateItem(it.id, {
-                                unit_price: it.sale_price,
-                                price_type: 'unit'
-                              });
-                            }}
-                            title={`Precio Detalle / Unitario: Bs ${it.sale_price}`}
-                            style={{
-                              fontSize: '0.6rem',
-                              padding: '1px 3px',
-                              borderRadius: '3px',
-                              border: `1px solid ${it.price_type === 'unit' ? '#10b981' : 'rgba(255,255,255,0.1)'}`,
-                              background: it.price_type === 'unit' ? 'rgba(16, 185, 129, 0.25)' : 'rgba(0,0,0,0.3)',
-                              color: it.price_type === 'unit' ? '#34d399' : 'var(--text-muted)',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            Det: {it.sale_price}
-                          </button>
-                        )}
+                      {/* Desktop Trash button */}
+                      <div className="hidden lg:flex items-center justify-center shrink-0 pt-4">
+                        <button 
+                          type="button" 
+                          onClick={() => handleRemoveItem(it.id)}
+                          className="p-2 text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/20 rounded-lg transition-colors cursor-pointer"
+                          disabled={items.length <= 1}
+                          title="Eliminar fila"
+                        >
+                          <Trash2 size={17} />
+                        </button>
                       </div>
-                    </div>
-
-                    {/* Alistar mercadería en (Per Product) */}
-                    <div>
-                      <label style={{ fontSize: '0.66rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>
-                        Alistar en:
-                      </label>
-                      <select 
-                        className="form-select"
-                        value={it.warehouse_source || 'ALMACEN'}
-                        onChange={e => handleUpdateItem(it.id, 'warehouse_source', e.target.value)}
-                        style={{
-                          fontSize: '0.74rem',
-                          fontWeight: 700,
-                          height: '42px',
-                          padding: '4px 6px',
-                          background: it.warehouse_source === 'TIENDA' 
-                            ? 'rgba(245, 158, 11, 0.15)' 
-                            : it.warehouse_source === 'CASA CUBANO' 
-                            ? 'rgba(168, 85, 247, 0.15)' 
-                            : 'rgba(16, 185, 129, 0.15)',
-                          color: it.warehouse_source === 'TIENDA' 
-                            ? '#fbbf24' 
-                            : it.warehouse_source === 'CASA CUBANO' 
-                            ? '#c084fc' 
-                            : '#34d399',
-                          border: `1px solid ${
-                            it.warehouse_source === 'TIENDA' 
-                              ? 'rgba(245, 158, 11, 0.4)' 
-                              : it.warehouse_source === 'CASA CUBANO' 
-                              ? 'rgba(168, 85, 247, 0.4)' 
-                              : 'rgba(16, 185, 129, 0.4)'
-                          }`
-                        }}
-                      >
-                        <option value="ALMACEN">📦 Almacén</option>
-                        <option value="TIENDA">🏬 Tienda</option>
-                        <option value="CASA CUBANO">🏠 C. Cubano</option>
-                      </select>
-                    </div>
-
-                    {/* Subtotal */}
-                    <div>
-                      <label style={{ fontSize: '0.66rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px', textAlign: 'right' }}>
-                        Subtotal
-                      </label>
-                      <div style={{
-                        fontSize: '0.86rem',
-                        fontWeight: 800,
-                        color: '#10b981',
-                        fontFamily: 'monospace',
-                        padding: '6px 2px',
-                        textAlign: 'right'
-                      }}>
-                        Bs {rowSubtotal.toFixed(2)}
-                      </div>
-                    </div>
-
-                    {/* Delete button */}
-                    <div style={{ textAlign: 'center' }}>
-                      <button 
-                        type="button" 
-                        onClick={() => handleRemoveItem(it.id)}
-                        className="btn btn-secondary"
-                        disabled={items.length <= 1}
-                        style={{ padding: '6px', color: '#fb7185', border: 'none' }}
-                      >
-                        <Trash2 size={16} />
-                      </button>
                     </div>
                   </div>
                 );
@@ -1823,56 +1578,43 @@ export default function NewSalesNoteModal({
             </div>
 
             {/* Warehouse batch helpers */}
-            <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--text-muted)', flexWrap: 'wrap', gap: '10px' }}>
-              <span>Total de productos en nota: <strong>{items.length}</strong></span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '0.72rem' }}>Alistar todos en:</span>
+            <div className="mt-3 flex flex-col sm:flex-row sm:items-center justify-between text-xs text-slate-600 dark:text-slate-400 gap-2 pt-2 border-t border-slate-200 dark:border-slate-700/60">
+              <span>Total de productos en nota: <strong className="text-slate-900 dark:text-white font-extrabold">{items.length}</strong></span>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[11px] text-slate-500">Alistar todos en:</span>
                 <button
                   type="button"
                   onClick={() => setItems(prev => prev.map(it => ({ ...it, warehouse_source: 'ALMACEN' })))}
-                  className="btn btn-secondary"
-                  style={{ fontSize: '0.7rem', padding: '3px 8px', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.3)' }}
+                  className="px-2 py-1 rounded-md text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/40 hover:bg-emerald-100 cursor-pointer"
                 >
-                  📦 Todo Almacén
+                  Todo Almacén
                 </button>
                 <button
                   type="button"
                   onClick={() => setItems(prev => prev.map(it => ({ ...it, warehouse_source: 'TIENDA' })))}
-                  className="btn btn-secondary"
-                  style={{ fontSize: '0.7rem', padding: '3px 8px', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.3)' }}
+                  className="px-2 py-1 rounded-md text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/15 border border-amber-200 dark:border-amber-500/40 hover:bg-amber-100 cursor-pointer"
                 >
-                  🏬 Todo Tienda
+                  Todo Tienda
                 </button>
                 <button
                   type="button"
                   onClick={() => setItems(prev => prev.map(it => ({ ...it, warehouse_source: 'CASA CUBANO' })))}
-                  className="btn btn-secondary"
-                  style={{ fontSize: '0.7rem', padding: '3px 8px', color: '#c084fc', border: '1px solid rgba(168, 85, 247, 0.3)' }}
+                  className="px-2 py-1 rounded-md text-xs font-bold text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-500/15 border border-purple-200 dark:border-purple-500/40 hover:bg-purple-100 cursor-pointer"
                 >
-                  🏠 Todo Cubano
+                  Todo Cubano
                 </button>
               </div>
             </div>
           </div>
 
           {/* Section 3: Payments / Abonos & Liquidation */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: '1.2fr 1fr',
-            gap: '16px',
-            marginBottom: '20px'
-          }}>
+          <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-4 mb-5">
             {/* Left: Abonos a Cuenta & Observaciones */}
-            <div style={{
-              background: 'var(--bg-subtle-box, rgba(0, 0, 0, 0.25))',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: '14px',
-              padding: '18px'
-            }}>
-              {/* Título de la sección (sin botón repetido) */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-                <DollarSign size={18} color="var(--cyan-primary)" />
-                <span style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--cyan-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <div className="bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 rounded-2xl p-4 sm:p-5 flex flex-col gap-4 shadow-xs">
+              {/* Título de la sección */}
+              <div className="flex items-center gap-2 mb-1">
+                <DollarSign size={18} className="text-cyan-600 dark:text-cyan-400" />
+                <span className="text-xs sm:text-sm font-black text-cyan-700 dark:text-cyan-300 uppercase tracking-wide">
                   3. Pagos a Cuenta & Abonos (A/C)
                 </span>
               </div>
@@ -2041,190 +1783,126 @@ export default function NewSalesNoteModal({
                     </button>
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div className="flex flex-col gap-3">
                     {newPayments.map(p => {
-                      const isMixed = p.payment_method === 'POR EFECTIVO Y TRANSFERENCIA';
+                      const totalRowMixto = (parseFloat(p.amount_cash) || 0) + (parseFloat(p.amount_qr) || 0) + (parseFloat(p.amount_discount) || 0);
 
                       return (
                         <div 
                           key={p.tempId} 
-                          style={{ 
-                            background: 'var(--bg-dark-card, rgba(6, 182, 212, 0.04))',
-                            padding: '10px 12px',
-                            borderRadius: '10px',
-                            border: isMixed ? '1px solid rgba(6, 182, 212, 0.4)' : '1px solid var(--border-subtle, rgba(6, 182, 212, 0.2))',
-                            boxShadow: '0 1px 4px rgba(0, 0, 0, 0.04)',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '8px'
-                          }}
+                          className="bg-cyan-50/60 dark:bg-cyan-500/10 border border-dashed border-cyan-400/70 dark:border-cyan-500/40 rounded-xl p-3 flex flex-col gap-2.5"
                         >
-                          {/* Fila Principal de Parámetros */}
-                          <div style={{ 
-                            display: 'grid', 
-                            gridTemplateColumns: isMixed ? '1.9fr 1.3fr 1fr 1fr 32px' : '2.2fr 1.1fr 1.1fr 1.3fr 32px', 
-                            gap: '8px', 
-                            alignItems: 'end' 
-                          }}>
-                            {/* 1. Modalidad */}
-                            <div>
-                              <label style={{ fontSize: '0.66rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>
-                                Modalidad:
+                          {/* Encabezado: Cuenta QR + Cobró + Fecha + Eliminar */}
+                          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
+                            <div className="sm:col-span-5">
+                              <label className="text-[11px] font-extrabold text-slate-700 dark:text-cyan-300 uppercase block mb-1">
+                                ¿De quién es la Cuenta QR?
                               </label>
                               <select 
-                                className="form-select"
-                                value={p.payment_method}
-                                onChange={e => handleUpdateNewPayment(p.tempId, 'payment_method', e.target.value)}
-                                style={{ fontSize: '0.76rem', height: '36px', fontWeight: 700, color: isMixed ? 'var(--cyan-primary)' : 'inherit' }}
+                                className="form-select text-xs font-extrabold py-1.5 px-2.5 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg w-full h-[36px]"
+                                value={p.qr_account || 'CUENTA JAIME'}
+                                onChange={e => handleUpdateNewPayment(p.tempId, 'qr_account', e.target.value)}
                               >
-                                <option value="POR EFECTIVO">💵 POR EFECTIVO</option>
-                                <option value="POR TRANSFERENCIA QR CUENTA JAIME">📱 POR TR. QR CUENTA JAIME</option>
-                                <option value="POR DEPOSITO BANCARIO CUENTA JAIME">🏦 POR DEP. BANCARIO CUENTA JAIME</option>
-                                <option value="POR TRANSFERENCIA QR CUENTA CELSO">📱 POR TR. QR CUENTA CELSO</option>
-                                <option value="POR DEPOSITO BANCARIO CUENTA CELSO">🏦 POR DEP. BANCARIO CUENTA CELSO</option>
-                                <option value="POR TRANSFERENCIA QR CUENTA BETO">📱 POR TR. QR CUENTA BETO</option>
-                                <option value="POR DEPOSITO BANCARIO CUENTA BETO">🏦 POR DEP. BANCARIO CUENTA BETO</option>
-                                <option value="POR EFECTIVO Y TRANSFERENCIA">⚡ POR EFECTIVO Y TRANSFERENCIA (MIXTO)</option>
+                                <option value="CUENTA JAIME">CUENTA JAIME</option>
+                                <option value="CUENTA BETHO">CUENTA BETHO</option>
                               </select>
                             </div>
 
-                            {/* Si es MIXTO: Cuenta del QR */}
-                            {isMixed && (
-                              <div>
-                                <label style={{ fontSize: '0.66rem', fontWeight: 700, color: 'var(--cyan-primary)', display: 'block', marginBottom: '3px' }}>
-                                  📱 QR a Nombre de:
-                                </label>
-                                <select 
-                                  className="form-select"
-                                  value={p.qr_account || 'CUENTA JAIME'}
-                                  onChange={e => handleUpdateNewPayment(p.tempId, 'qr_account', e.target.value)}
-                                  style={{ fontSize: '0.76rem', height: '36px', fontWeight: 700, border: '1px solid rgba(6, 182, 212, 0.4)' }}
-                                >
-                                  <option value="CUENTA JAIME">CUENTA JAIME</option>
-                                  <option value="CUENTA BETO">CUENTA BETO / BETHO</option>
-                                  <option value="CUENTA CELSO">CUENTA CELSO</option>
-                                </select>
-                              </div>
-                            )}
-
-                            {/* 2. Cobró */}
-                            <div>
-                              <label style={{ fontSize: '0.66rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>
-                                Cobró:
+                            <div className="sm:col-span-3">
+                              <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase block mb-1">
+                                Cobrado por:
                               </label>
-                              <select 
-                                className="form-select"
-                                value={p.registered_by || 'DANIEL'}
-                                onChange={e => handleUpdateNewPayment(p.tempId, 'registered_by', e.target.value)}
-                                style={{ fontSize: '0.76rem', height: '36px', fontWeight: 600 }}
-                              >
-                                <option value="DANIEL">DANIEL</option>
-                                <option value="JAIME">JAIME</option>
-                                <option value="TITO">TITO</option>
-                                <option value="ENTREGA">ENTREGA</option>
-                                <option value="MOSTRADOR TIENDA">MOSTRADOR</option>
-                              </select>
+                              <input
+                                type="text"
+                                readOnly
+                                value={p.registered_by || sellerName || 'SESIÓN ACTIVA'}
+                                className="form-input text-xs font-black py-1.5 px-2.5 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white rounded-lg w-full h-[36px]"
+                              />
                             </div>
 
-                            {/* 3. Fecha Pago */}
-                            <div>
-                              <label style={{ fontSize: '0.66rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>
+                            <div className="sm:col-span-3">
+                              <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase block mb-1">
                                 Fecha Pago:
                               </label>
                               <input 
                                 type="date" 
-                                className="form-input"
+                                className="form-input text-xs py-1.5 px-2 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg w-full h-[36px]"
                                 value={p.payment_date || date}
                                 onChange={e => handleUpdateNewPayment(p.tempId, 'payment_date', e.target.value)}
-                                style={{ fontSize: '0.76rem', height: '36px' }}
                               />
                             </div>
 
-                            {/* 4. Si NO es mixto: Monto Bs directo sin Detalle */}
-                            {!isMixed && (
-                              <div>
-                                <label style={{ fontSize: '0.66rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>
-                                  Monto Bs:
-                                </label>
-                                <input 
-                                  type="number" 
-                                  step="0.01" 
-                                  min="0"
-                                  className="form-input" 
-                                  placeholder="0.00"
-                                  value={p.amount}
-                                  onChange={e => handleUpdateNewPayment(p.tempId, 'amount', e.target.value)}
-                                  style={{ fontSize: '0.88rem', fontWeight: 800, textAlign: 'right', height: '36px', color: 'var(--emerald-success)' }}
-                                />
-                              </div>
-                            )}
-
-                            {/* 5. Descartar fila */}
-                            <div style={{ textAlign: 'center' }}>
+                            <div className="sm:col-span-1 flex justify-end">
                               <button 
                                 type="button" 
                                 onClick={() => handleRemoveNewPayment(p.tempId)}
-                                className="btn btn-secondary"
+                                className="h-[36px] w-[36px] rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-500/15 dark:hover:bg-rose-500/25 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30 flex items-center justify-center cursor-pointer"
                                 title="Descartar este abono"
-                                style={{ height: '36px', width: '32px', padding: 0, border: 'none', color: 'var(--rose-danger, #fb7185)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                               >
                                 <X size={16} />
                               </button>
                             </div>
                           </div>
 
-                          {/* Sub-fila especial si es MIXTO: 2 CUADROS (1 Efectivo y 1 QR) */}
-                          {isMixed && (
-                            <div style={{
-                              display: 'grid',
-                              gridTemplateColumns: '1fr 1fr 1.2fr',
-                              gap: '12px',
-                              padding: '10px 14px',
-                              background: 'rgba(6, 182, 212, 0.06)',
-                              borderRadius: '8px',
-                              border: '1px dashed rgba(6, 182, 212, 0.35)',
-                              alignItems: 'center'
-                            }}>
-                              <div>
-                                <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--amber-warning, #f59e0b)', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '3px' }}>
-                                  💵 Monto en Efectivo (Bs):
-                                </label>
-                                <input 
-                                  type="number" 
-                                  step="0.01" 
-                                  min="0"
-                                  className="form-input" 
-                                  placeholder="0.00"
-                                  value={p.amount_cash || ''}
-                                  onChange={e => handleUpdateNewPayment(p.tempId, 'amount_cash', e.target.value)}
-                                  style={{ fontSize: '0.88rem', fontWeight: 800, textAlign: 'right', height: '36px', color: 'var(--amber-warning, #f59e0b)', background: 'var(--bg-dark-surface, #ffffff)' }}
-                                />
-                              </div>
-
-                              <div>
-                                <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--cyan-primary)', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '3px' }}>
-                                  📱 Monto QR ({p.qr_account || 'CUENTA JAIME'}) (Bs):
-                                </label>
-                                <input 
-                                  type="number" 
-                                  step="0.01" 
-                                  min="0"
-                                  className="form-input" 
-                                  placeholder="0.00"
-                                  value={p.amount_qr || ''}
-                                  onChange={e => handleUpdateNewPayment(p.tempId, 'amount_qr', e.target.value)}
-                                  style={{ fontSize: '0.88rem', fontWeight: 800, textAlign: 'right', height: '36px', color: 'var(--cyan-primary)', background: 'var(--bg-dark-surface, #ffffff)' }}
-                                />
-                              </div>
-
-                              <div style={{ textAlign: 'right', paddingRight: '4px' }}>
-                                <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block' }}>Total de este Abono:</span>
-                                <span style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--emerald-success)', fontFamily: 'var(--font-mono, monospace)' }}>
-                                  Bs {((parseFloat(p.amount_cash) || 0) + (parseFloat(p.amount_qr) || 0)).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </span>
-                              </div>
+                          {/* Montos Efectivo + QR + Rebaja */}
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                            <div>
+                              <label className="text-[11px] font-extrabold text-slate-700 dark:text-amber-300 uppercase block mb-1">
+                                Monto Efectivo (Bs)
+                              </label>
+                              <input 
+                                type="number" 
+                                step="0.01" 
+                                min="0"
+                                inputMode="decimal"
+                                className="form-input text-sm font-black py-1.5 px-2.5 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg w-full h-[38px]" 
+                                placeholder="0.00"
+                                value={p.amount_cash || ''}
+                                onChange={e => handleUpdateNewPayment(p.tempId, 'amount_cash', e.target.value)}
+                              />
                             </div>
-                          )}
+
+                            <div>
+                              <label className="text-[11px] font-extrabold text-slate-700 dark:text-cyan-300 uppercase block mb-1">
+                                Monto QR ({p.qr_account || 'CUENTA JAIME'}) (Bs)
+                              </label>
+                              <input 
+                                type="number" 
+                                step="0.01" 
+                                min="0"
+                                inputMode="decimal"
+                                className="form-input text-sm font-black py-1.5 px-2.5 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg w-full h-[38px]" 
+                                placeholder="0.00"
+                                value={p.amount_qr || ''}
+                                onChange={e => handleUpdateNewPayment(p.tempId, 'amount_qr', e.target.value)}
+                              />
+                            </div>
+
+                            <div className="col-span-2 sm:col-span-1">
+                              <label className="text-[11px] font-extrabold text-purple-700 dark:text-purple-300 uppercase block mb-1">
+                                Rebaja / Descuento (Bs)
+                              </label>
+                              <input 
+                                type="number" 
+                                step="0.01" 
+                                min="0"
+                                inputMode="decimal"
+                                className="form-input text-sm font-black py-1.5 px-2.5 bg-white dark:bg-slate-900 border-purple-200 dark:border-purple-500/40 text-purple-700 dark:text-purple-300 rounded-lg w-full h-[38px]" 
+                                placeholder="0.00"
+                                value={p.amount_discount || ''}
+                                onChange={e => handleUpdateNewPayment(p.tempId, 'amount_discount', e.target.value)}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex justify-between items-center pt-1.5 border-t border-cyan-200/70 dark:border-cyan-500/20">
+                            <span className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
+                              Total Liquidado {(parseFloat(p.amount_discount) || 0) > 0 ? '(Pago + Rebaja)' : '(Efectivo + QR)'}:
+                            </span>
+                            <span className="text-sm sm:text-base font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                              Bs {totalRowMixto.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
                         </div>
                       );
                     })}
@@ -2245,32 +1923,22 @@ export default function NewSalesNoteModal({
               </div>
 
               {/* Debajo de Observaciones: Lugar / Destino de Entrega & Ubicación de Tienda */}
-              <div style={{
-                marginTop: '14px',
-                background: 'var(--bg-dark-surface, #ffffff)',
-                border: '1px solid var(--border-glass)',
-                borderRadius: '10px',
-                padding: '12px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '10px',
-                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <MapPin size={15} color="var(--cyan-primary)" />
-                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--cyan-primary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <div className="mt-2 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 rounded-xl p-3 flex flex-col gap-2.5">
+                <div className="flex items-center gap-2">
+                  <MapPin size={15} className="text-cyan-600 dark:text-cyan-400 shrink-0" />
+                  <span className="text-xs font-extrabold text-cyan-700 dark:text-cyan-400 uppercase tracking-wide">
                     Destino & Ubicación de Entrega
                   </span>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <div>
-                    <label className="form-label" style={{ fontSize: '0.7rem' }}>Lugar / Destino de Entrega *</label>
+                    <label className="form-label text-[11px] mb-1">Lugar / Destino de Entrega *</label>
                     <select 
-                      className="form-select"
+                      className="form-select text-xs font-semibold h-10 w-full"
+                      style={{ padding: '6px 12px', lineHeight: '1.3' }}
                       value={deliveryType}
                       onChange={e => setDeliveryType(e.target.value)}
-                      style={{ fontSize: '0.78rem', fontWeight: 600 }}
                     >
                       <option value="A su tienda">A su tienda</option>
                       <option value="A su casa">A su casa</option>
@@ -2284,114 +1952,100 @@ export default function NewSalesNoteModal({
                   </div>
 
                   <div>
-                    <label className="form-label" style={{ fontSize: '0.7rem' }}>Dirección / Referencia de Destino</label>
+                    <label className="form-label text-[11px] mb-1">Dirección / Referencia de Destino</label>
                     <input 
                       type="text" 
-                      className="form-input" 
+                      className="form-input text-xs h-10 w-full" 
+                      style={{ padding: '6px 12px', lineHeight: '1.3' }}
                       placeholder="Ej. MERCADO LA PAMPA / PASILLO 3"
                       value={destination}
                       onChange={e => setDestination(e.target.value)}
-                      style={{ fontSize: '0.78rem' }}
                     />
                   </div>
                 </div>
 
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
-                    <label className="form-label" style={{ fontSize: '0.7rem', margin: 0 }}>
-                      Ubicación de su tienda (Link de Google Maps / GPS)
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="form-label text-[11px] m-0">
+                      Ubicación GPS / Google Maps (Opcional)
                     </label>
                     {deliveryLocationUrl && (
                       <a 
                         href={deliveryLocationUrl} 
                         target="_blank" 
                         rel="noreferrer"
-                        style={{ fontSize: '0.7rem', color: 'var(--cyan-primary)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}
+                        className="text-[11px] text-cyan-600 dark:text-cyan-400 font-bold flex items-center gap-1 hover:underline"
                       >
                         <ExternalLink size={11} />
-                        <span>Ver / Probar Mapa</span>
+                        <span>Probar Mapa</span>
                       </a>
                     )}
                   </div>
                   <input 
                     type="text" 
-                    className="form-input" 
+                    className="form-input text-xs h-9 sm:h-10 py-1.5 px-2.5" 
                     placeholder="https://maps.app.goo.gl/... o coordenadas GPS"
                     value={deliveryLocationUrl}
                     onChange={e => setDeliveryLocationUrl(e.target.value)}
-                    style={{ fontSize: '0.78rem' }}
                   />
                 </div>
               </div>
             </div>
 
             {/* Right: Resumen Económico */}
-            <div style={{
-              background: 'var(--bg-subtle-box, #ffffff)',
-              border: '1px solid var(--border-glass)',
-              borderRadius: '14px',
-              padding: '18px',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between',
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)'
-            }}>
+            <div className="bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 rounded-2xl p-4 sm:p-5 flex flex-col justify-between shadow-xs">
               <div>
-                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '10px' }}>
+                <span className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-3">
                   Liquidación de la Nota
                 </span>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: '0.85rem' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Cajas / Unidades:</span>
-                  <span style={{ fontWeight: 700, color: 'var(--text-main, #f8fafc)' }}>
+                <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-700/60 text-xs sm:text-sm">
+                  <span className="text-slate-500 dark:text-slate-400">Cajas / Unidades:</span>
+                  <span className="font-extrabold text-slate-900 dark:text-white">
                     {totalBoxes} cajas ({totalUnits} unidades)
                   </span>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: '0.95rem' }}>
-                  <span style={{ fontWeight: 700, color: 'var(--text-main, #f8fafc)' }}>TOTAL NOTA:</span>
-                  <span style={{ fontWeight: 900, color: 'var(--text-main, #f8fafc)', fontFamily: 'monospace', fontSize: '1.15rem' }}>
+                <div className="flex justify-between py-2.5 border-b border-slate-100 dark:border-slate-700/60 text-sm sm:text-base">
+                  <span className="font-black text-slate-800 dark:text-slate-200">TOTAL NOTA:</span>
+                  <span className="font-black text-slate-900 dark:text-white font-mono text-xl sm:text-2xl">
                     Bs {totalAmount.toFixed(2)}
                   </span>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: '0.88rem' }}>
-                  <span style={{ color: 'var(--emerald-success, #34d399)', fontWeight: 700 }}>A CUENTA (A/C):</span>
-                  <div style={{ textAlign: 'right' }}>
-                    <span style={{ fontWeight: 800, color: 'var(--emerald-success, #34d399)', fontFamily: 'monospace', fontSize: '1rem' }}>
+                <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-700/60 text-xs sm:text-sm">
+                  <span className="text-emerald-700 dark:text-emerald-400 font-bold">A CUENTA (A/C):</span>
+                  <div className="text-right">
+                    <span className="font-black text-emerald-600 dark:text-emerald-400 font-mono text-base">
                       Bs {totalPaid.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                     {existingPaidSum > 0 && (
-                      <div style={{ fontSize: '0.68rem', color: 'var(--emerald-success, #6ee7b7)', marginTop: '1px' }}>
+                      <div className="text-[10px] text-emerald-600 dark:text-emerald-300 font-medium">
                         Bs {existingPaidSum.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} registrado{newPaidSum > 0 ? ` + Bs ${newPaidSum.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} nuevo` : ''}
                       </div>
                     )}
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '2px solid var(--border-subtle)', fontSize: '1.05rem' }}>
-                  <span style={{ fontWeight: 800, color: balanceDue > 0 ? 'var(--rose-danger, #fb7185)' : 'var(--emerald-success, #34d399)' }}>
+                <div className="flex justify-between py-3 border-b-2 border-slate-200 dark:border-slate-700 text-sm sm:text-base">
+                  <span className={`font-black ${balanceDue > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
                     SALDO PENDIENTE:
                   </span>
-                  <span style={{ fontWeight: 900, color: balanceDue > 0 ? 'var(--rose-danger, #fb7185)' : 'var(--emerald-success, #34d399)', fontFamily: 'monospace', fontSize: '1.25rem' }}>
+                  <span className={`font-black font-mono text-xl sm:text-2xl ${balanceDue > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
                     Bs {balanceDue.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
               </div>
 
               {/* Status Indicator */}
-              <div style={{
-                marginTop: '14px',
-                padding: '10px 12px',
-                borderRadius: '8px',
-                textAlign: 'center',
-                fontWeight: 800,
-                fontSize: '0.85rem',
-                letterSpacing: '0.05em',
-                background: noteStatusBg,
-                color: noteStatusColor,
-                border: `1px solid ${noteStatusBorder}`
-              }}>
+              <div 
+                className="mt-4 p-2.5 rounded-xl text-center font-black text-xs sm:text-sm tracking-wider uppercase border"
+                style={{
+                  background: noteStatusBg,
+                  color: noteStatusColor,
+                  borderColor: noteStatusBorder
+                }}
+              >
                 ESTADO: {noteStatusLabel}
               </div>
             </div>
@@ -2399,47 +2053,40 @@ export default function NewSalesNoteModal({
 
           {/* Error Banner */}
           {errorMessage && (
-            <div style={{
-              background: 'rgba(244, 63, 94, 0.12)',
-              border: '1px solid rgba(244, 63, 94, 0.3)',
-              borderRadius: '10px',
-              padding: '12px',
-              marginBottom: '16px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              fontSize: '0.84rem',
-              color: '#fb7185'
-            }}>
+            <div className="bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/30 rounded-xl p-3 flex items-center gap-2 text-xs sm:text-sm text-rose-600 dark:text-rose-400">
               <AlertCircle size={16} />
               <span>{errorMessage}</span>
             </div>
           )}
+          </div>
 
-          {/* Footer Actions */}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', paddingTop: '10px', borderTop: '1px solid var(--border-glass)' }}>
+          {/* Footer Fijo y Compacto (No tapa el contenido al hacer scroll en celular) */}
+          <div className="px-3.5 py-2.5 sm:px-5 sm:py-3.5 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-row gap-2 sm:justify-end shrink-0">
             <button 
               type="button" 
               onClick={onClose} 
-              className="btn btn-secondary" 
+              className="py-2.5 px-4 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 justify-center cursor-pointer" 
               disabled={isSubmitting}
             >
               Cancelar
             </button>
             <button 
               type="submit" 
-              className="btn btn-primary" 
+              className="btn btn-primary py-2.5 px-4 sm:px-6 font-black text-xs sm:text-sm shadow-md shadow-cyan-900/20 gap-2 justify-center flex-1 sm:flex-none rounded-xl" 
               disabled={isSubmitting}
-              style={{ padding: '10px 28px', fontWeight: 800, fontSize: '0.9rem' }}
             >
-              {isSubmitting 
-                ? (noteToEdit ? 'Actualizando y Sincronizando Stock...' : 'Emitiendo y Descontando Stock...') 
-                : (noteToEdit ? '💾 Guardar Cambios en Nota' : 'Confirmar y Despachar Nota')}
+              <Save size={16} />
+              <span>
+                {isSubmitting 
+                  ? (noteToEdit ? 'Actualizando...' : 'Emitiendo...') 
+                  : (noteToEdit ? 'Guardar Cambios en Nota' : 'Confirmar y Despachar Nota')}
+              </span>
             </button>
           </div>
         </form>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

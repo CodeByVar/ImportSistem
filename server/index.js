@@ -699,12 +699,92 @@ app.post('/api/movements/batch', (req, res) => {
   }
 });
 
-// Weekly Dispatches Matrix API (L M M J V S)
+// Helper to calculate exact days range for a given weekCode or mondayDate
+function getWeekDaysRange(weekCode, mondayDate) {
+  let monday;
+  if (mondayDate && /^\d{4}-\d{2}-\d{2}$/.test(mondayDate)) {
+    const [y, m, d] = mondayDate.split('-').map(Number);
+    monday = new Date(y, m - 1, d);
+  } else if (weekCode && /^\d{4}-W\d{1,2}$/.test(weekCode)) {
+    const [year, weekStr] = weekCode.split('-W');
+    const simple = new Date(Number(year), 0, 1 + (Number(weekStr) - 1) * 7);
+    const dayOfWeek = simple.getDay();
+    const diff = simple.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+    monday = new Date(simple.setDate(diff));
+  } else {
+    const d = new Date();
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    monday = new Date(d.setDate(diff));
+  }
+
+  const days = [];
+  const dayNames = ['LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO'];
+  const dayKeys = ['qty_l', 'qty_m', 'qty_mi', 'qty_j', 'qty_v', 'qty_s'];
+  const daysInfo = [];
+
+  for (let i = 0; i < 6; i++) {
+    const dt = new Date(monday);
+    dt.setDate(monday.getDate() + i);
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, '0');
+    const d = String(dt.getDate()).padStart(2, '0');
+    const iso = `${y}-${m}-${d}`;
+    days.push(iso);
+    daysInfo.push({
+      key: dayKeys[i],
+      dayName: dayNames[i],
+      dateIso: iso,
+      dateShort: `${d}/${m}`,
+      dayIndex: i + 1
+    });
+  }
+
+  return {
+    monday: days[0],
+    saturday: days[5],
+    daysList: days,
+    daysInfo
+  };
+}
+
+// Weekly Dispatches Matrix API (L M M J V S) — Auto-sincronizado con notas de venta reales
 app.get('/api/weekly-dispatches', (req, res) => {
   try {
-    const { weekCode, brand, search, limit = 100, offset = 0 } = req.query;
+    const { weekCode, mondayDate, brand, search, onlyDispatched, limit = 100, offset = 0 } = req.query;
     const targetWeek = weekCode || 'CURRENT';
+    const weekRange = getWeekDaysRange(targetWeek, mondayDate);
+    const [dL, dM, dMi, dJ, dV, dS] = weekRange.daysList;
+
     let query = `
+      WITH weekly_sales AS (
+        SELECT 
+          sni.product_id,
+          SUM(CASE WHEN COALESCE(strftime('%Y-%m-%d', sn.delivered_at), sn.date) = ? THEN sni.quantity ELSE 0 END) AS auto_qty_l,
+          SUM(CASE WHEN COALESCE(strftime('%Y-%m-%d', sn.delivered_at), sn.date) = ? THEN sni.quantity ELSE 0 END) AS auto_qty_m,
+          SUM(CASE WHEN COALESCE(strftime('%Y-%m-%d', sn.delivered_at), sn.date) = ? THEN sni.quantity ELSE 0 END) AS auto_qty_mi,
+          SUM(CASE WHEN COALESCE(strftime('%Y-%m-%d', sn.delivered_at), sn.date) = ? THEN sni.quantity ELSE 0 END) AS auto_qty_j,
+          SUM(CASE WHEN COALESCE(strftime('%Y-%m-%d', sn.delivered_at), sn.date) = ? THEN sni.quantity ELSE 0 END) AS auto_qty_v,
+          SUM(CASE WHEN COALESCE(strftime('%Y-%m-%d', sn.delivered_at), sn.date) = ? THEN sni.quantity ELSE 0 END) AS auto_qty_s,
+          SUM(sni.quantity) AS auto_total_sold,
+          SUM(sni.quantity * sni.unit_price) AS auto_total_revenue,
+          ROUND(AVG(sni.unit_price), 2) AS auto_avg_price,
+          MIN(sni.unit_price) AS auto_min_price,
+          MAX(sni.unit_price) AS auto_max_price,
+          GROUP_CONCAT(sn.note_code || ' (' || sni.quantity || 'u @ Bs' || ROUND(sni.unit_price, 2) || ')', ' | ') AS notes_summary
+        FROM sales_note_items sni
+        JOIN sales_notes sn ON sni.note_id = sn.id
+        WHERE sn.date >= ? AND sn.date <= ?
+          AND sn.status != 'ANULADO'
+          AND (
+            sn.delivery_status = 'ENTREGADO'
+            OR EXISTS (
+              SELECT 1 FROM daily_dispatch_orders ddo 
+              WHERE ddo.sales_note_id = sn.id AND ddo.status = 'ENTREGADO'
+            )
+          )
+        GROUP BY sni.product_id
+      )
       SELECT 
         p.id,
         p.sku,
@@ -721,19 +801,52 @@ app.get('/api/weekly-dispatches', (req, res) => {
         p.special_price,
         p.boxes_count,
         p.units_per_box,
-        COALESCE(w.qty_l, 0) AS qty_l,
-        COALESCE(w.qty_m, 0) AS qty_m,
-        COALESCE(w.qty_mi, 0) AS qty_mi,
-        COALESCE(w.qty_j, 0) AS qty_j,
-        COALESCE(w.qty_v, 0) AS qty_v,
-        COALESCE(w.qty_s, 0) AS qty_s,
+        -- Cantidades automáticas directas de las notas de venta con entrega confirmada
+        COALESCE(ws.auto_qty_l, 0) AS auto_qty_l,
+        COALESCE(ws.auto_qty_m, 0) AS auto_qty_m,
+        COALESCE(ws.auto_qty_mi, 0) AS auto_qty_mi,
+        COALESCE(ws.auto_qty_j, 0) AS auto_qty_j,
+        COALESCE(ws.auto_qty_v, 0) AS auto_qty_v,
+        COALESCE(ws.auto_qty_s, 0) AS auto_qty_s,
+        COALESCE(ws.auto_total_sold, 0) AS auto_total_sold,
+        COALESCE(ws.auto_total_revenue, 0) AS auto_total_revenue,
+        ws.auto_avg_price,
+        ws.auto_min_price,
+        ws.auto_max_price,
+        ws.notes_summary,
+        -- Cantidades efectivas para visualización (toma lo confirmado automáticamente)
+        COALESCE(w.qty_l, ws.auto_qty_l, 0) AS qty_l,
+        COALESCE(w.qty_m, ws.auto_qty_m, 0) AS qty_m,
+        COALESCE(w.qty_mi, ws.auto_qty_mi, 0) AS qty_mi,
+        COALESCE(w.qty_j, ws.auto_qty_j, 0) AS qty_j,
+        COALESCE(w.qty_v, ws.auto_qty_v, 0) AS qty_v,
+        COALESCE(w.qty_s, ws.auto_qty_s, 0) AS qty_s,
         COALESCE(w.qty_reservas, 0) AS qty_reservas,
-        COALESCE(w.total_week, 0) AS total_week
+        (
+          COALESCE(w.qty_l, ws.auto_qty_l, 0) +
+          COALESCE(w.qty_m, ws.auto_qty_m, 0) +
+          COALESCE(w.qty_mi, ws.auto_qty_mi, 0) +
+          COALESCE(w.qty_j, ws.auto_qty_j, 0) +
+          COALESCE(w.qty_v, ws.auto_qty_v, 0) +
+          COALESCE(w.qty_s, ws.auto_qty_s, 0) +
+          COALESCE(w.qty_reservas, 0)
+        ) AS total_week
       FROM products p
+      LEFT JOIN weekly_sales ws ON p.id = ws.product_id
       LEFT JOIN weekly_dispatches w ON p.id = w.product_id AND w.week_code = ?
       WHERE 1=1
     `;
-    const params = [targetWeek];
+
+    const params = [
+      dL, dM, dMi, dJ, dV, dS,
+      dL, dS,
+      targetWeek
+    ];
+
+    if (onlyDispatched === 'true') {
+      query += ` AND (COALESCE(ws.auto_total_sold, 0) > 0 OR COALESCE(w.total_week, 0) > 0)`;
+    }
+
     if (brand && brand !== 'Todas') {
       query += ` AND p.brand = ?`;
       params.push(brand);
@@ -742,13 +855,44 @@ app.get('/api/weekly-dispatches', (req, res) => {
       query += ` AND (p.name LIKE ? OR p.sku LIKE ? OR p.warehouse LIKE ? OR p.brand LIKE ?)`;
       params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
     }
-    query += ` ORDER BY p.name ASC LIMIT ? OFFSET ?`;
+
+    query += ` ORDER BY 
+      CASE WHEN (COALESCE(ws.auto_total_sold, 0) > 0 OR COALESCE(w.total_week, 0) > 0) THEN 0 ELSE 1 END,
+      p.name ASC LIMIT ? OFFSET ?`;
     params.push(Number(limit), Number(offset));
 
     const rows = db.prepare(query).all(...params);
 
-    let countQuery = `SELECT COUNT(*) as count FROM products p WHERE 1=1`;
-    const countParams = [];
+    // Count query
+    let countQuery = `
+      WITH weekly_sales AS (
+        SELECT 
+          sni.product_id,
+          SUM(sni.quantity) AS auto_total_sold
+        FROM sales_note_items sni
+        JOIN sales_notes sn ON sni.note_id = sn.id
+        WHERE sn.date >= ? AND sn.date <= ?
+          AND sn.status != 'ANULADO'
+          AND (
+            sn.delivery_status = 'ENTREGADO'
+            OR EXISTS (
+              SELECT 1 FROM daily_dispatch_orders ddo 
+              WHERE ddo.sales_note_id = sn.id AND ddo.status = 'ENTREGADO'
+            )
+          )
+        GROUP BY sni.product_id
+      )
+      SELECT COUNT(*) as count 
+      FROM products p
+      LEFT JOIN weekly_sales ws ON p.id = ws.product_id
+      LEFT JOIN weekly_dispatches w ON p.id = w.product_id AND w.week_code = ?
+      WHERE 1=1
+    `;
+    const countParams = [dL, dS, targetWeek];
+
+    if (onlyDispatched === 'true') {
+      countQuery += ` AND (COALESCE(ws.auto_total_sold, 0) > 0 OR COALESCE(w.total_week, 0) > 0)`;
+    }
     if (brand && brand !== 'Todas') {
       countQuery += ` AND p.brand = ?`;
       countParams.push(brand);
@@ -757,16 +901,148 @@ app.get('/api/weekly-dispatches', (req, res) => {
       countQuery += ` AND (p.name LIKE ? OR p.sku LIKE ? OR p.warehouse LIKE ? OR p.brand LIKE ?)`;
       countParams.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
     }
+
     const totalCount = db.prepare(countQuery).get(...countParams).count;
 
-    res.json({ success: true, data: rows, total: totalCount });
+    // Resumen KPI global de entregas confirmadas
+    const kpiDelivered = db.prepare(`
+      SELECT 
+        COUNT(DISTINCT sni.product_id) as total_products_sold,
+        COALESCE(SUM(sni.quantity), 0) as total_units_sold,
+        COALESCE(SUM(sni.quantity * sni.unit_price), 0) as total_revenue_sold
+      FROM sales_note_items sni
+      JOIN sales_notes sn ON sni.note_id = sn.id
+      WHERE sn.date >= ? AND sn.date <= ?
+        AND sn.status != 'ANULADO'
+        AND (
+          sn.delivery_status = 'ENTREGADO'
+          OR EXISTS (
+            SELECT 1 FROM daily_dispatch_orders ddo 
+            WHERE ddo.sales_note_id = sn.id AND ddo.status = 'ENTREGADO'
+          )
+        )
+    `).get(dL, dS) || { total_products_sold: 0, total_units_sold: 0, total_revenue_sold: 0 };
+
+    // Resumen KPI de pedidos en preparación / pendientes de entrega
+    const kpiPending = db.prepare(`
+      SELECT 
+        COUNT(DISTINCT sni.product_id) as total_products_pending,
+        COALESCE(SUM(sni.quantity), 0) as total_units_pending
+      FROM sales_note_items sni
+      JOIN sales_notes sn ON sni.note_id = sn.id
+      WHERE sn.date >= ? AND sn.date <= ?
+        AND sn.status != 'ANULADO'
+        AND (
+          sn.delivery_status != 'ENTREGADO'
+          AND NOT EXISTS (
+            SELECT 1 FROM daily_dispatch_orders ddo 
+            WHERE ddo.sales_note_id = sn.id AND ddo.status = 'ENTREGADO'
+          )
+        )
+    `).get(dL, dS) || { total_products_pending: 0, total_units_pending: 0 };
+
+    res.json({ 
+      success: true, 
+      data: rows, 
+      total: totalCount,
+      weekRange,
+      kpiSummary: {
+        totalProductsSold: kpiDelivered.total_products_sold,
+        totalUnitsSold: kpiDelivered.total_units_sold,
+        totalRevenueSold: kpiDelivered.total_revenue_sold,
+        totalProductsPending: kpiPending.total_products_pending,
+        totalUnitsPending: kpiPending.total_units_pending
+      }
+    });
   } catch (err) {
+    console.error('Error in /api/weekly-dispatches:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Sincronización automática de despachos semanales desde notas de venta con ENTREGA CONFIRMADA
+app.post('/api/weekly-dispatches/sync-from-sales', (req, res) => {
+  try {
+    const { weekCode, mondayDate } = req.body;
+    const targetWeek = weekCode || 'CURRENT';
+    const weekRange = getWeekDaysRange(targetWeek, mondayDate);
+    const [dL, dM, dMi, dJ, dV, dS] = weekRange.daysList;
+
+    const salesQuery = `
+      SELECT 
+        sni.product_id,
+        SUM(CASE WHEN COALESCE(strftime('%Y-%m-%d', sn.delivered_at), sn.date) = ? THEN sni.quantity ELSE 0 END) AS qty_l,
+        SUM(CASE WHEN COALESCE(strftime('%Y-%m-%d', sn.delivered_at), sn.date) = ? THEN sni.quantity ELSE 0 END) AS qty_m,
+        SUM(CASE WHEN COALESCE(strftime('%Y-%m-%d', sn.delivered_at), sn.date) = ? THEN sni.quantity ELSE 0 END) AS qty_mi,
+        SUM(CASE WHEN COALESCE(strftime('%Y-%m-%d', sn.delivered_at), sn.date) = ? THEN sni.quantity ELSE 0 END) AS qty_j,
+        SUM(CASE WHEN COALESCE(strftime('%Y-%m-%d', sn.delivered_at), sn.date) = ? THEN sni.quantity ELSE 0 END) AS qty_v,
+        SUM(CASE WHEN COALESCE(strftime('%Y-%m-%d', sn.delivered_at), sn.date) = ? THEN sni.quantity ELSE 0 END) AS qty_s,
+        SUM(sni.quantity) AS total_sold
+      FROM sales_note_items sni
+      JOIN sales_notes sn ON sni.note_id = sn.id
+      WHERE sn.date >= ? AND sn.date <= ?
+        AND sn.status != 'ANULADO'
+        AND (
+          sn.delivery_status = 'ENTREGADO'
+          OR EXISTS (
+            SELECT 1 FROM daily_dispatch_orders ddo 
+            WHERE ddo.sales_note_id = sn.id AND ddo.status = 'ENTREGADO'
+          )
+        )
+      GROUP BY sni.product_id
+    `;
+
+    const salesRows = db.prepare(salesQuery).all(dL, dM, dMi, dJ, dV, dS, dL, dS);
+
+    const syncTx = db.transaction(() => {
+      const upsertStmt = db.prepare(`
+        INSERT INTO weekly_dispatches (
+          week_code, product_id, qty_l, qty_m, qty_mi, qty_j, qty_v, qty_s, qty_reservas, total_week, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(week_code, product_id) DO UPDATE SET
+          qty_l = excluded.qty_l,
+          qty_m = excluded.qty_m,
+          qty_mi = excluded.qty_mi,
+          qty_j = excluded.qty_j,
+          qty_v = excluded.qty_v,
+          qty_s = excluded.qty_s,
+          total_week = excluded.qty_l + excluded.qty_m + excluded.qty_mi + excluded.qty_j + excluded.qty_v + excluded.qty_s + weekly_dispatches.qty_reservas,
+          updated_at = CURRENT_TIMESTAMP
+      `);
+
+      const updateWeeklySalesStmt = db.prepare(`
+        UPDATE products SET weekly_sales = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+      `);
+
+      let count = 0;
+      let totalUnits = 0;
+
+      for (const r of salesRows) {
+        const total = r.qty_l + r.qty_m + r.qty_mi + r.qty_j + r.qty_v + r.qty_s;
+        upsertStmt.run(targetWeek, r.product_id, r.qty_l, r.qty_m, r.qty_mi, r.qty_j, r.qty_v, r.qty_s, total);
+        updateWeeklySalesStmt.run(total, r.product_id);
+        count++;
+        totalUnits += total;
+      }
+
+      return { count, totalUnits };
+    });
+
+    const result = syncTx();
+    res.json({
+      success: true,
+      count: result.count,
+      totalUnits: result.totalUnits,
+      message: `Sincronizados automáticamente ${result.count} productos (${result.totalUnits} unidades entregadas) con entregas confirmadas.`
+    });
+  } catch (err) {
+    console.error('Error syncing weekly dispatches from sales:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
 app.post('/api/weekly-dispatches/save', (req, res) => {
-  const { weekCode, mondayDate, items } = req.body;
+  const { weekCode, mondayDate, items, deductStock = false } = req.body;
   if (!weekCode || !items || !Array.isArray(items)) {
     return res.status(400).json({ success: false, error: 'Datos incompletos para guardar la planilla' });
   }
@@ -788,6 +1064,14 @@ app.post('/api/weekly-dispatches/save', (req, res) => {
         qty_reservas = excluded.qty_reservas,
         total_week = excluded.total_week,
         updated_at = CURRENT_TIMESTAMP
+    `);
+
+    const updateStatsOnlyStmt = db.prepare(`
+      UPDATE products SET
+        weekly_sales = ?,
+        reserved_stock = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
     `);
 
     const updateStockStmt = db.prepare(`
@@ -840,7 +1124,7 @@ app.post('/api/weekly-dispatches/save', (req, res) => {
 
       upsertDispatchStmt.run(weekCode, pId, l, m, mi, j, v, s, res, newTotalWeek);
 
-      if (deltaStockToDeduct !== 0) {
+      if (deductStock && deltaStockToDeduct !== 0) {
         updateStockStmt.run(deltaStockToDeduct, newTotalWeek, res, pId);
         totalUnitsDelta += deltaStockToDeduct;
 
@@ -863,6 +1147,8 @@ app.post('/api/weekly-dispatches/save', (req, res) => {
             `Despachos L-M-M-J-V-S (${weekCode}): L:${l} M:${m} M:${mi} J:${j} V:${v} S:${s} Res:${res}`
           );
         }
+      } else {
+        updateStatsOnlyStmt.run(newTotalWeek, res, pId);
       }
 
       itemsUpdated++;
@@ -1825,7 +2111,7 @@ app.get('/api/customers/:id/statement', (req, res) => {
 // ==================== NOTAS DE VENTA & DESPACHOS ====================
 app.get('/api/sales-notes', (req, res) => {
   try {
-    const { search, status, customerId, limit = 100, offset = 0 } = req.query;
+    const { search, status, customerId, dailyDate, limit = 100, offset = 0 } = req.query;
     let query = `
       SELECT 
         sn.*,
@@ -1876,7 +2162,58 @@ app.get('/api/sales-notes', (req, res) => {
       FROM sales_notes
     `).get();
 
-    res.json({ success: true, data: notes, total: totalCount, kpis });
+    const targetDailyDate = dailyDate || new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0];
+    const dailyStats = db.prepare(`
+      SELECT
+        COALESCE(SUM(CASE 
+          WHEN UPPER(snp.payment_method) LIKE '%EFECTIVO%' AND UPPER(snp.payment_method) NOT LIKE '%TRANSFERENCIA%' 
+          THEN snp.amount ELSE 0 END), 0) AS daily_cash,
+        COUNT(CASE 
+          WHEN UPPER(snp.payment_method) LIKE '%EFECTIVO%' AND UPPER(snp.payment_method) NOT LIKE '%TRANSFERENCIA%' AND snp.amount > 0 
+          THEN 1 END) AS daily_cash_count,
+        COALESCE(SUM(CASE 
+          WHEN UPPER(snp.payment_method) LIKE '%QR%' OR UPPER(snp.payment_method) LIKE '%TRANSFERENCIA%' OR UPPER(snp.payment_method) LIKE '%DEP%' OR UPPER(snp.payment_method) LIKE '%BANCARIO%' 
+          THEN snp.amount ELSE 0 END), 0) AS daily_qr,
+        COUNT(CASE 
+          WHEN (UPPER(snp.payment_method) LIKE '%QR%' OR UPPER(snp.payment_method) LIKE '%TRANSFERENCIA%' OR UPPER(snp.payment_method) LIKE '%DEP%' OR UPPER(snp.payment_method) LIKE '%BANCARIO%') AND snp.amount > 0 
+          THEN 1 END) AS daily_qr_count,
+        COALESCE(SUM(CASE 
+          WHEN (UPPER(snp.payment_method) LIKE '%QR%' OR UPPER(snp.payment_method) LIKE '%TRANSFERENCIA%' OR UPPER(snp.payment_method) LIKE '%DEP%' OR UPPER(snp.payment_method) LIKE '%BANCARIO%')
+               AND (UPPER(snp.payment_method) LIKE '%JAIME%' OR UPPER(snp.account_info) LIKE '%JAIME%')
+          THEN snp.amount ELSE 0 END), 0) AS daily_qr_jaime,
+        COALESCE(SUM(CASE 
+          WHEN (UPPER(snp.payment_method) LIKE '%QR%' OR UPPER(snp.payment_method) LIKE '%TRANSFERENCIA%' OR UPPER(snp.payment_method) LIKE '%DEP%' OR UPPER(snp.payment_method) LIKE '%BANCARIO%')
+               AND (UPPER(snp.payment_method) LIKE '%BET%' OR UPPER(snp.account_info) LIKE '%BET%')
+          THEN snp.amount ELSE 0 END), 0) AS daily_qr_betho,
+        COALESCE(SUM(CASE 
+          WHEN UPPER(snp.payment_method) LIKE '%REBAJA%' OR UPPER(snp.payment_method) LIKE '%DESCUENTO%' 
+          THEN snp.amount ELSE 0 END), 0) AS daily_discount
+      FROM sales_note_payments snp
+      JOIN sales_notes sn ON snp.note_id = sn.id
+      WHERE sn.status NOT IN ('ANULADO', 'PRE-RESERVA')
+        AND snp.payment_date = ?
+    `).get(targetDailyDate);
+
+    const dailyTotalCollected = (dailyStats?.daily_cash || 0) + (dailyStats?.daily_qr || 0);
+
+    res.json({ 
+      success: true, 
+      data: notes, 
+      total: totalCount, 
+      kpis: {
+        ...kpis,
+        daily_date: targetDailyDate,
+        daily_cash: dailyStats?.daily_cash || 0,
+        daily_cash_count: dailyStats?.daily_cash_count || 0,
+        daily_qr: dailyStats?.daily_qr || 0,
+        daily_qr_count: dailyStats?.daily_qr_count || 0,
+        daily_qr_jaime: dailyStats?.daily_qr_jaime || 0,
+        daily_qr_betho: dailyStats?.daily_qr_betho || 0,
+        daily_discount: dailyStats?.daily_discount || 0,
+        daily_total_collected: dailyTotalCollected,
+        daily_payments_count: (dailyStats?.daily_cash_count || 0) + (dailyStats?.daily_qr_count || 0)
+      }
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -1986,13 +2323,19 @@ app.post('/api/sales-notes', (req, res) => {
     const isPreReserva = req.body.status === 'PRE-RESERVA';
     const status = isPreReserva ? 'PRE-RESERVA' : (balance <= 0 ? 'PAGADO' : 'PENDIENTE');
 
+    const isImmediateDelivery = req.body.delivery_status === 'ENTREGADO';
+    const deliveryStatus = isImmediateDelivery ? 'ENTREGADO' : 'PENDIENTE';
+    const stockDeducted = isImmediateDelivery ? 1 : 0;
+    const deliveredAt = isImmediateDelivery ? (date || new Date().toISOString().split('T')[0]) : null;
+
     // Insertar Nota
     const insertNoteStmt = db.prepare(`
       INSERT INTO sales_notes (
         note_code, customer_id, customer_name, customer_phone, customer_address,
         date, due_date, seller_name, delivery_type, delivery_destination, delivery_location_url, notes,
-        total_boxes, total_units, total_amount, paid_amount, balance_amount, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        total_boxes, total_units, total_amount, paid_amount, balance_amount, status,
+        delivery_status, stock_deducted, delivered_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const noteResult = insertNoteStmt.run(
@@ -2013,12 +2356,15 @@ app.post('/api/sales-notes', (req, res) => {
       totalAmount,
       initialPaid,
       balance,
-      status
+      status,
+      deliveryStatus,
+      stockDeducted,
+      deliveredAt
     );
 
     const noteId = noteResult.lastInsertRowid;
 
-    // Insertar Ítems y descontar inventario en caliente
+    // Insertar Ítems
     const insertItemStmt = db.prepare(`
       INSERT INTO sales_note_items (
         note_id, product_id, sku, description, unit_med, sale_mode,
@@ -2072,8 +2418,9 @@ app.post('/api/sales-notes', (req, res) => {
         item.warehouse_source || 'ALMACEN'
       );
 
-      // Descontar inventario real si existe el producto (NO descontar si es PRE-RESERVA)
-      if (item.product_id && !isPreReserva) {
+      // El stock NO se descuenta al crear la nota, ni sube a la planilla aún.
+      // Se descuenta y sube RECIÉN una vez confirmada la entrega (estado ENTREGADO).
+      if (isImmediateDelivery && item.product_id && !isPreReserva) {
         deductStockStmt.run(qtyUnits, item.product_id);
 
         const prod = db.prepare('SELECT landed_cost FROM products WHERE id = ?').get(item.product_id);
@@ -2090,7 +2437,7 @@ app.post('/api/sales-notes', (req, res) => {
           customer_name.trim().toUpperCase(),
           payments && payments.length > 0 ? payments[0].payment_method : 'Efectivo / Crédito',
           date || new Date().toISOString().split('T')[0],
-          `Nota ${noteCode} (${mode === 'CAJA' ? `${boxesCount} cj` : `${qtyUnits} u`}) - ${item.warehouse_source || 'ALMACEN'}`
+          `Entrega Inmediata - Nota ${noteCode} (${mode === 'CAJA' ? `${boxesCount} cj` : `${qtyUnits} u`}) - ${item.warehouse_source || 'ALMACEN'}`
         );
       }
     }
@@ -2351,18 +2698,22 @@ app.put('/api/sales-notes/:id', (req, res) => {
       throw new Error('No se puede editar una nota anulada.');
     }
 
-    // 1. Revertir deducción de stock y movimientos antiguos
-    const oldItems = db.prepare('SELECT * FROM sales_note_items WHERE note_id = ?').all(noteId);
-    const restoreStockStmt = db.prepare('UPDATE products SET current_stock = current_stock + ? WHERE id = ?');
-    for (const oi of oldItems) {
-      if (oi.product_id) {
-        restoreStockStmt.run(oi.quantity, oi.product_id);
+    const wasStockDeducted = existingNote.stock_deducted === 1;
+
+    // 1. Revertir deducción de stock y movimientos antiguos SOLO si ya se había descontado
+    if (wasStockDeducted) {
+      const oldItems = db.prepare('SELECT * FROM sales_note_items WHERE note_id = ?').all(noteId);
+      const restoreStockStmt = db.prepare('UPDATE products SET current_stock = current_stock + ? WHERE id = ?');
+      for (const oi of oldItems) {
+        if (oi.product_id) {
+          restoreStockStmt.run(oi.quantity, oi.product_id);
+        }
       }
+      db.prepare('DELETE FROM inventory_movements WHERE reference = ?').run(existingNote.note_code);
     }
     db.prepare('DELETE FROM sales_note_items WHERE note_id = ?').run(noteId);
-    db.prepare('DELETE FROM inventory_movements WHERE reference = ?').run(existingNote.note_code);
 
-    // 2. Insertar nuevos ítems y descontar stock actualizado (Opción B)
+    // 2. Insertar nuevos ítems y descontar stock actualizado SOLO si está entregada
     let totalBoxes = 0;
     let totalUnits = 0;
     let totalAmount = 0;
@@ -2424,7 +2775,8 @@ app.put('/api/sales-notes/:id', (req, res) => {
         item.warehouse_source || 'ALMACEN'
       );
 
-      if (item.product_id) {
+      // Descontar stock SOLO si la nota ya estaba confirmada como entregada
+      if (wasStockDeducted && item.product_id) {
         deductStockStmt.run(qtyUnits, item.product_id);
 
         const prod = db.prepare('SELECT landed_cost FROM products WHERE id = ?').get(item.product_id);
@@ -2550,9 +2902,14 @@ app.put('/api/sales-notes/:id', (req, res) => {
 // Marcar nota como ENTREGADO y registrar liquidación de cobro / deuda
 app.post('/api/sales-notes/:id/deliver', (req, res) => {
   const {
-    payment_type, // 'COMPLETO', 'PARCIAL', 'CREDITO'
+    payment_type, // 'PAGO', 'COMPLETO', 'PARCIAL', 'CREDITO'
     amount_paid,
     payment_method,
+    is_mixed,
+    amount_cash,
+    amount_qr,
+    amount_discount,
+    qr_account,
     account_info,
     registered_by,
     due_date,
@@ -2567,38 +2924,91 @@ app.post('/api/sales-notes/:id/deliver', (req, res) => {
     if (note.status === 'ANULADO') throw new Error('No se puede entregar una nota anulada.');
 
     const collector = registered_by || 'ENTREGA';
+    const paymentDateStr = req.body.payment_date || new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0];
 
-    if (payment_type === 'COMPLETO') {
-      const remainingBalance = note.balance_amount;
-      if (remainingBalance > 0) {
-        db.prepare(`
-          INSERT INTO sales_note_payments (
-            note_id, payment_method, account_info, amount, payment_date, registered_by
-          ) VALUES (?, ?, ?, ?, ?, ?)
-        `).run(
-          noteId,
-          payment_method || 'Efectivo',
-          account_info || '',
-          remainingBalance,
-          new Date().toISOString().split('T')[0],
-          collector
-        );
-      }
-    } else if (payment_type === 'PARCIAL') {
-      const partialAmt = parseFloat(amount_paid) || 0;
-      if (partialAmt > 0) {
-        db.prepare(`
-          INSERT INTO sales_note_payments (
-            note_id, payment_method, account_info, amount, payment_date, registered_by
-          ) VALUES (?, ?, ?, ?, ?, ?)
-        `).run(
-          noteId,
-          payment_method || 'Efectivo',
-          account_info || '',
-          partialAmt,
-          new Date().toISOString().split('T')[0],
-          collector
-        );
+    if (payment_type !== 'CREDITO') {
+      if (is_mixed || payment_method === 'POR EFECTIVO Y TRANSFERENCIA') {
+        const cashVal = parseFloat(amount_cash) || 0;
+        const qrVal = parseFloat(amount_qr) || 0;
+        const discountVal = parseFloat(amount_discount) || 0;
+        const qrAcc = qr_account || 'CUENTA JAIME';
+
+        if (cashVal > 0) {
+          db.prepare(`
+            INSERT INTO sales_note_payments (
+              note_id, payment_method, account_info, amount, payment_date, registered_by
+            ) VALUES (?, ?, ?, ?, ?, ?)
+          `).run(
+            noteId,
+            'POR EFECTIVO',
+            account_info ? `${account_info} - Parte Efectivo` : 'Pago en Efectivo',
+            cashVal,
+            paymentDateStr,
+            collector
+          );
+        }
+
+        if (qrVal > 0) {
+          db.prepare(`
+            INSERT INTO sales_note_payments (
+              note_id, payment_method, account_info, amount, payment_date, registered_by
+            ) VALUES (?, ?, ?, ?, ?, ?)
+          `).run(
+            noteId,
+            `POR TRANSFERENCIA QR ${qrAcc}`,
+            account_info ? `${account_info} - Parte QR ${qrAcc}` : `Transferencia QR ${qrAcc}`,
+            qrVal,
+            paymentDateStr,
+            collector
+          );
+        }
+
+        if (discountVal > 0) {
+          db.prepare(`
+            INSERT INTO sales_note_payments (
+              note_id, payment_method, account_info, amount, payment_date, registered_by
+            ) VALUES (?, ?, ?, ?, ?, ?)
+          `).run(
+            noteId,
+            'REBAJA / DESCUENTO',
+            account_info ? `${account_info} - Rebaja aplicada` : 'Rebaja / Descuento aplicado',
+            discountVal,
+            paymentDateStr,
+            collector
+          );
+        }
+      } else if (payment_type === 'COMPLETO' && amount_paid === undefined) {
+        const remainingBalance = note.balance_amount;
+        if (remainingBalance > 0) {
+          db.prepare(`
+            INSERT INTO sales_note_payments (
+              note_id, payment_method, account_info, amount, payment_date, registered_by
+            ) VALUES (?, ?, ?, ?, ?, ?)
+          `).run(
+            noteId,
+            payment_method || 'POR EFECTIVO',
+            account_info || '',
+            remainingBalance,
+            paymentDateStr,
+            collector
+          );
+        }
+      } else {
+        const paidAmt = parseFloat(amount_paid) || 0;
+        if (paidAmt > 0) {
+          db.prepare(`
+            INSERT INTO sales_note_payments (
+              note_id, payment_method, account_info, amount, payment_date, registered_by
+            ) VALUES (?, ?, ?, ?, ?, ?)
+          `).run(
+            noteId,
+            payment_method || 'POR EFECTIVO',
+            account_info || '',
+            paidAmt,
+            paymentDateStr,
+            collector
+          );
+        }
       }
     }
 
@@ -2607,10 +3017,12 @@ app.post('/api/sales-notes/:id/deliver', (req, res) => {
     const newBalance = Math.max(0, note.total_amount - newPaid);
     const newStatus = newBalance <= 0 ? 'PAGADO' : 'PENDIENTE';
     const finalDueDate = due_date || note.due_date;
+    const deliveryDate = new Date().toISOString().split('T')[0];
 
     db.prepare(`
       UPDATE sales_notes 
-      SET paid_amount = ?, balance_amount = ?, status = ?, due_date = ?, updated_at = CURRENT_TIMESTAMP
+      SET paid_amount = ?, balance_amount = ?, status = ?, due_date = ?,
+          delivery_status = 'ENTREGADO', stock_deducted = 1, delivered_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(newPaid, newBalance, newStatus, finalDueDate, noteId);
 
@@ -2620,6 +3032,41 @@ app.post('/api/sales-notes/:id/deliver', (req, res) => {
       SET status = 'ENTREGADO', updated_at = CURRENT_TIMESTAMP
       WHERE sales_note_id = ?
     `).run(noteId);
+
+    // DESCONTAR RECIÉN EL STOCK FÍSICO AL CONFIRMAR LA ENTREGA
+    if (!note.stock_deducted || note.stock_deducted === 0) {
+      const noteItems = db.prepare('SELECT * FROM sales_note_items WHERE note_id = ?').all(noteId);
+      const deductStockStmt = db.prepare('UPDATE products SET current_stock = current_stock - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
+      const insertMovementStmt = db.prepare(`
+        INSERT INTO inventory_movements (
+          product_id, type, quantity, unit_price, total_amount, gross_profit,
+          reference, party_name, payment_method, date, notes
+        ) VALUES (?, 'SALIDA', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      for (const it of noteItems) {
+        if (it.product_id) {
+          deductStockStmt.run(it.quantity, it.product_id);
+
+          const prod = db.prepare('SELECT landed_cost FROM products WHERE id = ?').get(it.product_id);
+          const cost = prod ? prod.landed_cost : 0;
+          const profit = it.subtotal - (it.quantity * cost);
+
+          insertMovementStmt.run(
+            it.product_id,
+            it.quantity,
+            it.unit_price,
+            it.subtotal,
+            profit,
+            note.note_code,
+            note.customer_name,
+            payment_method || 'Entrega Confirmada',
+            deliveryDate,
+            `Entrega Confirmada - Nota ${note.note_code} (${it.quantity} u.)`
+          );
+        }
+      }
+    }
 
     return {
       noteCode: note.note_code,
@@ -2650,22 +3097,21 @@ app.delete('/api/sales-notes/:id', (req, res) => {
     if (!note) throw new Error('Nota no encontrada');
     if (note.status === 'ANULADO') throw new Error('La nota ya se encuentra anulada.');
 
-    // Reponer stock SOLO si la nota no era una pre-reserva (el stock nunca fue descontado)
-    const items = db.prepare('SELECT * FROM sales_note_items WHERE note_id = ?').all(req.params.id);
-    if (note.status !== 'PRE-RESERVA') {
+    // Reponer stock SOLO si el stock fue descontado previamente al confirmar entrega (stock_deducted === 1)
+    if (note.stock_deducted === 1) {
+      const items = db.prepare('SELECT * FROM sales_note_items WHERE note_id = ?').all(req.params.id);
       const restoreStockStmt = db.prepare('UPDATE products SET current_stock = current_stock + ? WHERE id = ?');
       for (const item of items) {
         if (item.product_id) {
           restoreStockStmt.run(item.quantity, item.product_id);
         }
       }
+      // Eliminar movimientos de salida asociados
+      db.prepare('DELETE FROM inventory_movements WHERE reference = ?').run(note.note_code);
     }
 
-    // Eliminar movimientos de salida asociados
-    db.prepare('DELETE FROM inventory_movements WHERE reference = ?').run(note.note_code);
-
     // Cambiar estado a ANULADO
-    db.prepare("UPDATE sales_notes SET status = 'ANULADO', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(req.params.id);
+    db.prepare("UPDATE sales_notes SET status = 'ANULADO', delivery_status = 'CANCELADO', stock_deducted = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(req.params.id);
 
     // Sincronizar estado en orden del día
     db.prepare("UPDATE daily_dispatch_orders SET status = 'CANCELADO', updated_at = CURRENT_TIMESTAMP WHERE sales_note_id = ?").run(req.params.id);
@@ -2698,7 +3144,8 @@ app.get('/api/daily-orders', (req, res) => {
         sn.balance_amount AS note_balance,
         sn.due_date AS note_due_date,
         sn.date AS note_date,
-        sn.customer_name AS note_customer_name
+        sn.customer_name AS note_customer_name,
+        sn.seller_name AS note_seller_name
       FROM daily_dispatch_orders ddo
       LEFT JOIN sales_notes sn ON ddo.sales_note_id = sn.id
       WHERE ddo.date = ? 
@@ -2711,17 +3158,28 @@ app.get('/api/daily-orders', (req, res) => {
       ORDER BY section ASC, row_num ASC, id ASC
     `).all(date);
 
-    const meta = db.prepare(`
-      SELECT * FROM daily_dispatch_meta WHERE date = ?
-    `).get(date) || { supervisor: 'TITO', notes: '' };
-
     // Also get sales notes created on this date
     const dateSalesNotes = db.prepare(`
-      SELECT id, note_code, customer_name, total_amount, paid_amount, balance_amount, status, delivery_destination
+      SELECT id, note_code, customer_name, seller_name, total_amount, paid_amount, balance_amount, status, delivery_destination
       FROM sales_notes
       WHERE date = ? AND status != 'ANULADO'
       ORDER BY id ASC
     `).all(date);
+
+    const firstNoteCreator = orders.find(o => o.note_seller_name)?.note_seller_name 
+      || dateSalesNotes.find(n => n.seller_name)?.seller_name 
+      || '';
+
+    const savedMeta = db.prepare(`
+      SELECT * FROM daily_dispatch_meta WHERE date = ?
+    `).get(date);
+
+    const meta = {
+      supervisor: (savedMeta?.supervisor && savedMeta.supervisor !== 'TITO') 
+        ? savedMeta.supervisor 
+        : (firstNoteCreator || savedMeta?.supervisor || ''),
+      notes: savedMeta?.notes || ''
+    };
 
     // Pre-reservas activas sobre camiones / contenedores que están en camino o en tránsito
     const truckReservations = db.prepare(`
@@ -2859,6 +3317,51 @@ app.post('/api/daily-orders/save', (req, res) => {
           o.extra_observations || '',
           o.pending_tasks || ''
         );
+
+        // Si se marca como ENTREGADO, descontar stock físico si aún no se había descontado
+        if (o.sales_note_id) {
+          const note = db.prepare('SELECT * FROM sales_notes WHERE id = ?').get(o.sales_note_id);
+          if (note && note.status !== 'ANULADO') {
+            if (o.status === 'ENTREGADO' && (!note.stock_deducted || note.stock_deducted === 0)) {
+              // Descontar inventario físico recién ahora
+              const noteItems = db.prepare('SELECT * FROM sales_note_items WHERE note_id = ?').all(o.sales_note_id);
+              const deductStmt = db.prepare('UPDATE products SET current_stock = current_stock - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
+              const movStmt = db.prepare(`
+                INSERT INTO inventory_movements (
+                  product_id, type, quantity, unit_price, total_amount, gross_profit,
+                  reference, party_name, payment_method, date, notes
+                ) VALUES (?, 'SALIDA', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              `);
+
+              for (const it of noteItems) {
+                if (it.product_id) {
+                  deductStmt.run(it.quantity, it.product_id);
+                  const prod = db.prepare('SELECT landed_cost FROM products WHERE id = ?').get(it.product_id);
+                  const cost = prod ? prod.landed_cost : 0;
+                  const profit = it.subtotal - (it.quantity * cost);
+                  movStmt.run(
+                    it.product_id, it.quantity, it.unit_price, it.subtotal, profit,
+                    note.note_code, note.customer_name, 'Entrega Confirmada', date,
+                    `Entrega Confirmada en Orden del Día - Nota ${note.note_code}`
+                  );
+                }
+              }
+
+              db.prepare(`UPDATE sales_notes SET delivery_status = 'ENTREGADO', stock_deducted = 1, delivered_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(o.sales_note_id);
+            } else if (o.status !== 'ENTREGADO' && note.stock_deducted === 1) {
+              // Si se revirtió el estado de ENTREGADO a otro estado, reponer stock
+              const noteItems = db.prepare('SELECT * FROM sales_note_items WHERE note_id = ?').all(o.sales_note_id);
+              const restoreStmt = db.prepare('UPDATE products SET current_stock = current_stock + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
+              for (const it of noteItems) {
+                if (it.product_id) {
+                  restoreStmt.run(it.quantity, it.product_id);
+                }
+              }
+              db.prepare('DELETE FROM inventory_movements WHERE reference = ?').run(note.note_code);
+              db.prepare(`UPDATE sales_notes SET delivery_status = ?, stock_deducted = 0, delivered_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(o.status || 'PENDIENTE', o.sales_note_id);
+            }
+          }
+        }
       });
 
       // 3. Replace side items for this date
@@ -3306,7 +3809,7 @@ app.delete('/api/containers/items/:itemId', (req, res) => {
 app.get('/api/users', (req, res) => {
   try {
     const users = db.prepare(`
-      SELECT id, name, username, pin_code, role, phone, email, avatar_color, status, notes, created_at, updated_at
+      SELECT id, name, username, pin_code, role, phone, email, avatar_color, avatar_url, status, notes, created_at, updated_at
       FROM users
       ORDER BY id ASC
     `).all();
@@ -3320,7 +3823,7 @@ app.get('/api/users', (req, res) => {
 app.get('/api/users/:id', (req, res) => {
   try {
     const user = db.prepare(`
-      SELECT id, name, username, pin_code, role, phone, email, avatar_color, status, notes, created_at
+      SELECT id, name, username, pin_code, role, phone, email, avatar_color, avatar_url, status, notes, created_at
       FROM users WHERE id = ?
     `).get(req.params.id);
     if (!user) return res.status(404).json({ success: false, error: 'Usuario no encontrado' });
@@ -3382,7 +3885,7 @@ app.post('/api/users', (req, res) => {
 app.put('/api/users/:id', (req, res) => {
   try {
     const { id } = req.params;
-    const { name, username, pin_code, role, phone, email, avatar_color, status, notes } = req.body;
+    const { name, username, pin_code, role, phone, email, avatar_color, avatar_url, status, notes } = req.body;
 
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
     if (!user) return res.status(404).json({ success: false, error: 'Usuario no encontrado' });
@@ -3411,6 +3914,7 @@ app.put('/api/users/:id', (req, res) => {
         phone = COALESCE(?, phone),
         email = COALESCE(?, email),
         avatar_color = COALESCE(?, avatar_color),
+        avatar_url = ?,
         status = COALESCE(?, status),
         notes = COALESCE(?, notes),
         updated_at = CURRENT_TIMESTAMP
@@ -3423,6 +3927,7 @@ app.put('/api/users/:id', (req, res) => {
       phone !== undefined ? phone : user.phone,
       email !== undefined ? email : user.email,
       avatar_color || user.avatar_color,
+      avatar_url !== undefined ? avatar_url : user.avatar_url,
       status || user.status,
       notes !== undefined ? notes : user.notes,
       id
@@ -3490,7 +3995,9 @@ app.post('/api/users/login', (req, res) => {
         username: user.username,
         role: user.role,
         avatar_color: user.avatar_color,
+        avatar_url: user.avatar_url,
         phone: user.phone,
+        email: user.email,
         status: user.status
       },
       message: `¡Bienvenido al sistema, ${user.name}!` 

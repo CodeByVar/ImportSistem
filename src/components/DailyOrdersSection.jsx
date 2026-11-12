@@ -19,7 +19,12 @@ import {
   Clock,
   ExternalLink,
   PackageCheck,
-  Box
+  Box,
+  CalendarDays,
+  Sun,
+  Sunset,
+  Pencil,
+  Phone
 } from 'lucide-react';
 import DeliveryConfirmModal from './DeliveryConfirmModal';
 
@@ -109,12 +114,33 @@ function getAccountStatus(row) {
   };
 }
 
+function getActiveSessionUserName() {
+  try {
+    const savedAuth = localStorage.getItem('siscontrol_auth_session');
+    if (savedAuth) {
+      const parsed = JSON.parse(savedAuth);
+      if (parsed?.user?.name) return parsed.user.name.toUpperCase();
+    }
+    const savedActive = localStorage.getItem('siscontrol_active_user');
+    if (savedActive) {
+      const parsed = JSON.parse(savedActive);
+      if (parsed?.name) return parsed.name.toUpperCase();
+    }
+  } catch (e) {
+    // ignore
+  }
+  return 'ENCARGADO';
+}
+
 export default function DailyOrdersSection({ 
   onOpenPrintNote, 
   onOpenEditNote, 
   onOpenNewNote, 
   onOpenAddPayment, 
   onNavigateToContainers,
+  onNavigateToWeekly,
+  onActiveDateChange,
+  onOrderDelivered,
   refreshTrigger 
 }) {
   const [weekOffset, setWeekOffset] = useState(0);
@@ -124,7 +150,7 @@ export default function DailyOrdersSection({
     const map = { 1: 'LUNES', 2: 'MARTES', 3: 'MIERCOLES', 4: 'JUEVES', 5: 'VIERNES', 6: 'SABADO' };
     return map[dayOfWeek] || 'LUNES';
   });
-  const [supervisor, setSupervisor] = useState('TITO');
+  const [supervisor, setSupervisor] = useState(() => getActiveSessionUserName());
   const [deliveryModalRow, setDeliveryModalRow] = useState(null);
 
   // Days dates mapping for current week offset
@@ -145,6 +171,12 @@ export default function DailyOrdersSection({
   const activeDay = useMemo(() => {
     return weekDays.find(d => d.key === selectedDayKey) || weekDays[0];
   }, [weekDays, selectedDayKey]);
+
+  useEffect(() => {
+    if (onActiveDateChange && activeDay) {
+      onActiveDateChange(activeDay);
+    }
+  }, [activeDay, onActiveDateChange]);
 
   // Main table rows
   const [rows, setRows] = useState([]);
@@ -167,10 +199,24 @@ export default function DailyOrdersSection({
     try {
       const res = await fetch(`/api/daily-orders?date=${activeDay.dateIso}`).then(r => r.json());
       if (res.success) {
-        setRows(res.data.orders || []);
+        const normalizedOrders = (res.data.orders || []).map(o => {
+          const isAfternoon = Boolean(o.afternoon_shift) && !Boolean(o.morning_shift);
+          return {
+            ...o,
+            morning_shift: isAfternoon ? 0 : 1,
+            afternoon_shift: isAfternoon ? 1 : 0
+          };
+        });
+        setRows(normalizedOrders);
         setSideItems(res.data.sideItems || []);
-        if (res.data.supervisor) {
-          setSupervisor(res.data.supervisor);
+        const noteCreatorFromOrders = normalizedOrders.find(o => o.note_seller_name)?.note_seller_name
+          || (res.data.dateSalesNotes || []).find(n => n.seller_name)?.seller_name;
+        if (noteCreatorFromOrders) {
+          setSupervisor(noteCreatorFromOrders.toUpperCase());
+        } else if (res.data.supervisor && res.data.supervisor !== 'TITO') {
+          setSupervisor(res.data.supervisor.toUpperCase());
+        } else {
+          setSupervisor(getActiveSessionUserName());
         }
         setDateSalesNotes(res.data.dateSalesNotes || []);
         setTruckReservations(res.data.truckReservations || []);
@@ -209,11 +255,25 @@ export default function DailyOrdersSection({
     }
   };
 
-  // Handle cell edit for a row
+  // Handle cell edit for a row (Horario Mañana y Tarde son mutuamente excluyentes)
   const handleRowChange = (index, field, value) => {
     setRows(prev => {
       const copy = [...prev];
-      copy[index] = { ...copy[index], [field]: value };
+      if (field === 'morning_shift') {
+        copy[index] = {
+          ...copy[index],
+          morning_shift: 1,
+          afternoon_shift: 0
+        };
+      } else if (field === 'afternoon_shift') {
+        copy[index] = {
+          ...copy[index],
+          morning_shift: 0,
+          afternoon_shift: 1
+        };
+      } else {
+        copy[index] = { ...copy[index], [field]: value };
+      }
       return copy;
     });
   };
@@ -409,12 +469,8 @@ export default function DailyOrdersSection({
   };
 
   return (
-    <div className="daily-orders-container glass-panel" style={{
-      padding: '24px',
-      borderRadius: '18px',
-      marginBottom: '28px',
-      border: '1px solid var(--border-glass)',
-      background: 'var(--bg-dark-surface)'
+    <div className="daily-orders-container glass-panel p-2.5 sm:p-6 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl sm:rounded-3xl shadow-sm mb-6" style={{
+      marginBottom: '28px'
     }}>
       {/* Toast Alert */}
       {toast && (
@@ -440,90 +496,62 @@ export default function DailyOrdersSection({
       )}
 
       {/* Top Header Row */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: '16px',
-        marginBottom: '20px',
-        paddingBottom: '16px',
-        borderBottom: '1px solid var(--border-glass)'
-      }}>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3.5 mb-4 pb-4 border-b border-slate-200 dark:border-slate-700/60">
         {/* Title & Supervisor */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <div style={{
-            width: '46px',
-            height: '46px',
-            borderRadius: '12px',
-            background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.25), rgba(16, 185, 129, 0.25))',
-            border: '1px solid rgba(6, 182, 212, 0.4)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'var(--cyan-primary)'
-          }}>
-            <ClipboardList size={24} />
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br from-cyan-500/20 to-emerald-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-600 dark:text-cyan-400 shrink-0">
+            <ClipboardList size={22} />
           </div>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              <h2 className="font-heading" style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>
-                ORDEN DE ENTREGAS DE CLIENTES DIARIO
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="font-heading text-base sm:text-xl font-black text-slate-900 dark:text-white m-0">
+                ORDEN DE ENTREGAS DIARIO
               </h2>
-              <span className="badge badge-emerald" style={{ fontSize: '0.72rem', fontWeight: 700 }}>
-                Control L - M - M - J - V - S
+              <span className="badge badge-emerald text-[10px] sm:text-xs font-bold">
+                Control L - S
               </span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-              <span>Encargado / Supervisor:</span>
-              <div style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '7px',
-                background: 'var(--bg-subtle-box)',
-                padding: '3px 10px',
-                borderRadius: '8px',
-                border: '1.5px solid var(--border-glass)',
-                boxShadow: 'inset 0 1px 2px rgba(0, 0, 0, 0.04)'
-              }}>
-                <User size={14} color="var(--cyan-primary)" />
+            <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 dark:text-slate-400">
+              <span>Encargado:</span>
+              <div className="inline-flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-0.5 rounded-md border border-slate-200 dark:border-slate-700">
+                <User size={12} className="text-cyan-600 dark:text-cyan-400 shrink-0" />
                 <input 
                   type="text"
                   value={supervisor}
                   onChange={e => setSupervisor(e.target.value.toUpperCase())}
-                  placeholder="TITO"
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: 'var(--text-main)',
-                    fontWeight: 800,
-                    width: '90px',
-                    fontSize: '0.85rem',
-                    textTransform: 'uppercase',
-                    outline: 'none',
-                    letterSpacing: '0.04em'
-                  }}
+                  placeholder="ENCARGADO"
+                  className="bg-transparent border-none text-slate-900 dark:text-white font-black w-28 sm:w-36 text-xs uppercase outline-none"
                 />
               </div>
-              <span style={{ margin: '0 4px', color: 'var(--text-faint)' }}>•</span>
-              <span>Fecha: <strong style={{ color: 'var(--text-main)' }}>{activeDay.dateIso}</strong></span>
+              <span className="text-slate-400 dark:text-slate-600">•</span>
+              <span>Fecha: <strong className="text-slate-900 dark:text-white">{activeDay.dateIso}</strong></span>
             </div>
           </div>
         </div>
 
         {/* Action Buttons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+        <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+          {onNavigateToWeekly && (
+            <button
+              onClick={onNavigateToWeekly}
+              className="btn btn-secondary text-xs py-1.5 sm:py-2 px-2.5 sm:px-3 gap-1.5 border-indigo-500/40 text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-500/10 flex-1 sm:flex-none justify-center"
+              title="Ir a la Planilla de Despachos Semanal consolidada"
+            >
+              <CalendarDays size={14} className="text-indigo-500 dark:text-indigo-400" />
+              <span>Planilla Semanal</span>
+            </button>
+          )}
+
           <button
             onClick={handleSyncNotes}
             disabled={isSaving}
-            className="btn btn-secondary"
-            style={{ fontSize: '0.82rem', padding: '8px 14px', gap: '6px' }}
+            className="btn btn-secondary text-xs py-1.5 sm:py-2 px-2.5 sm:px-3 gap-1.5 flex-1 sm:flex-none justify-center text-slate-700 dark:text-slate-200"
             title="Sincronizar automáticamente las notas de venta creadas en esta fecha"
           >
-            <RefreshCw size={15} className={isSaving ? 'animate-spin' : ''} color="var(--cyan-primary)" />
-            <span>Sincronizar Notas del Día</span>
+            <RefreshCw size={14} className={isSaving ? 'animate-spin' : ''} color="var(--cyan-primary)" />
+            <span>Sincronizar</span>
             {dateSalesNotes.length > 0 && (
-              <span className="badge badge-cyan" style={{ fontSize: '0.68rem', padding: '1px 6px' }}>
+              <span className="badge badge-cyan text-[10px] py-0 px-1.5">
                 {dateSalesNotes.length}
               </span>
             )}
@@ -531,78 +559,56 @@ export default function DailyOrdersSection({
 
           <button
             onClick={onOpenNewNote}
-            className="btn btn-primary"
-            style={{
-              fontSize: '0.85rem',
-              padding: '9px 18px',
-              gap: '8px',
-              fontWeight: 700,
-              boxShadow: '0 4px 14px rgba(6, 182, 212, 0.35)'
-            }}
+            className="btn btn-primary text-xs py-1.5 sm:py-2 px-3 sm:px-4 gap-1.5 font-bold shadow-md shadow-cyan-900/30 flex-1 sm:flex-none justify-center"
             title="Crear nueva nota de venta"
           >
-            <Plus size={16} />
-            <span>+ Nueva Nota de Venta</span>
+            <Plus size={15} />
+            <span>+ Nueva Nota</span>
           </button>
 
           <button
             onClick={handleSave}
             disabled={isSaving}
-            className="btn btn-emerald"
-            style={{
-              fontSize: '0.85rem',
-              padding: '9px 18px',
-              gap: '8px',
-              fontWeight: 700,
-              boxShadow: '0 0 16px rgba(16, 185, 129, 0.35)'
-            }}
+            className="btn btn-emerald text-xs py-1.5 sm:py-2 px-3 sm:px-4 gap-1.5 font-bold shadow-md shadow-emerald-900/30 flex-1 sm:flex-none justify-center"
           >
-            <Save size={16} />
-            <span>{isSaving ? 'Guardando...' : 'Guardar Orden del Día'}</span>
+            <Save size={15} />
+            <span>{isSaving ? 'Guardando...' : 'Guardar'}</span>
           </button>
 
           <button
             onClick={handlePrint}
-            className="btn btn-secondary"
-            style={{ fontSize: '0.82rem', padding: '8px 12px' }}
+            className="btn btn-secondary text-xs p-2 hidden sm:flex text-slate-700 dark:text-slate-200"
             title="Imprimir hoja de ruta"
           >
-            <Printer size={16} />
+            <Printer size={15} />
           </button>
         </div>
       </div>
 
-      {/* Week Navigator & Day Tabs (Identical to Google Sheets tabs) */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: '12px',
-        marginBottom: '18px'
-      }}>
+      {/* Week Navigator & Day Tabs (Horizontally scrollable on mobile) */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2.5 mb-4">
         {/* Day Pills / Tabs */}
-        <div style={{
-          display: 'flex',
-          gap: '6px',
-          flexWrap: 'wrap',
-          background: 'var(--bg-tab-container)',
-          padding: '5px',
-          borderRadius: '14px',
-          border: '1px solid var(--border-glass)',
-          boxShadow: 'inset 0 1px 3px rgba(0, 0, 0, 0.04)'
-        }}>
+        <div 
+          className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none touch-pan-x w-full sm:w-auto"
+          style={{
+            background: 'var(--bg-tab-container)',
+            padding: '5px',
+            borderRadius: '14px',
+            border: '1px solid var(--border-glass)',
+            boxShadow: 'inset 0 1px 3px rgba(0, 0, 0, 0.04)'
+          }}
+        >
           {weekDays.map(d => {
             const isActive = d.key === selectedDayKey;
             return (
               <button
                 key={d.key}
                 onClick={() => setSelectedDayKey(d.key)}
-                className="btn"
+                className="btn shrink-0"
                 style={{
-                  padding: '7px 15px',
+                  padding: '6px 12px',
                   borderRadius: '10px',
-                  fontSize: '0.82rem',
+                  fontSize: '0.8rem',
                   fontWeight: isActive ? 800 : 700,
                   border: 'none',
                   background: isActive 
@@ -612,20 +618,19 @@ export default function DailyOrdersSection({
                   boxShadow: isActive ? '0 4px 14px rgba(6, 182, 212, 0.4)' : 'none',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '8px',
+                  gap: '6px',
                   cursor: 'pointer',
                   transition: 'all 0.15s ease'
                 }}
               >
                 <span>{d.label}</span>
                 <span style={{
-                  fontSize: '0.72rem',
+                  fontSize: '0.7rem',
                   fontWeight: isActive ? 800 : 600,
-                  padding: '2px 7px',
+                  padding: '2px 6px',
                   background: isActive ? 'rgba(0, 0, 0, 0.22)' : 'var(--border-subtle)',
                   color: isActive ? '#ffffff' : 'var(--text-faint)',
-                  borderRadius: '6px',
-                  boxShadow: isActive ? 'inset 0 1px 2px rgba(0, 0, 0, 0.15)' : 'none'
+                  borderRadius: '6px'
                 }}>
                   {d.dateShort}
                 </span>
@@ -635,38 +640,26 @@ export default function DailyOrdersSection({
         </div>
 
         {/* Week Switcher */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '4px',
-          background: 'var(--bg-tab-container)',
-          padding: '5px',
-          borderRadius: '12px',
-          border: '1px solid var(--border-glass)',
-          boxShadow: 'inset 0 1px 3px rgba(0, 0, 0, 0.04)'
-        }}>
+        <div className="flex items-center gap-1 self-end sm:self-auto bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200 dark:border-slate-700/60">
           <button
             onClick={() => setWeekOffset(w => w - 1)}
-            className="btn btn-secondary"
-            style={{ padding: '6px 8px', border: 'none', color: 'var(--text-main)' }}
+            className="btn btn-secondary py-1 px-2 border-none text-slate-700 dark:text-slate-300"
             title="Semana Anterior"
           >
-            <ChevronLeft size={16} />
+            <ChevronLeft size={15} />
           </button>
           <button
             onClick={() => setWeekOffset(0)}
-            className="btn btn-secondary"
-            style={{ padding: '4px 12px', fontSize: '0.78rem', border: 'none', fontWeight: 800, color: 'var(--text-main)' }}
+            className="btn btn-secondary py-1 px-2.5 text-xs font-bold border-none text-slate-900 dark:text-white"
           >
             Esta Semana
           </button>
           <button
             onClick={() => setWeekOffset(w => w + 1)}
-            className="btn btn-secondary"
-            style={{ padding: '6px 8px', border: 'none', color: 'var(--text-main)' }}
+            className="btn btn-secondary py-1 px-2 border-none text-slate-700 dark:text-slate-300"
             title="Semana Siguiente"
           >
-            <ChevronRight size={16} />
+            <ChevronRight size={15} />
           </button>
         </div>
       </div>
@@ -689,8 +682,8 @@ export default function DailyOrdersSection({
         </div>
       )}
 
-      {/* Main Table: Exact Columns from Google Sheet reference */}
-      <div className="data-table-container" style={{
+      {/* Main Table (DESKTOP: Exact Columns from Google Sheet reference) */}
+      <div className="data-table-container hidden md:block" style={{
         overflowX: 'auto',
         borderRadius: '12px',
         border: '1px solid var(--border-glass)',
@@ -724,7 +717,7 @@ export default function DailyOrdersSection({
             ) : rows.length === 0 ? (
               <tr>
                 <td colSpan="9" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
-                  <div style={{ fontSize: '1.8rem', marginBottom: '8px' }}>📝</div>
+                  <ClipboardList size={30} style={{ margin: '0 auto 8px', opacity: 0.6 }} />
                   <div style={{ fontWeight: 700, color: 'var(--text-main)' }}>No hay actividades ni pedidos programados para este día</div>
                   <div style={{ fontSize: '0.78rem', marginTop: '6px' }}>
                     Haz clic en <strong>"+ Agregar Fila"</strong> o en <strong>"Sincronizar Notas del Día"</strong> para importar las notas emitidas.
@@ -786,8 +779,9 @@ export default function DailyOrdersSection({
                               {(row.activity_or_customer || '').replace(/\s*\([A-Za-z0-9_-]+\)\s*$/, '') || 'Cliente'}
                             </span>
                             {row.sales_note_code && (
-                              <span className="badge badge-cyan" style={{ fontSize: '0.72rem', padding: '2px 8px', flexShrink: 0, fontWeight: 700 }}>
-                                {row.sales_note_code} ✏️
+                              <span className="badge badge-cyan" style={{ fontSize: '0.72rem', padding: '2px 8px', flexShrink: 0, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                <span>{row.sales_note_code}</span>
+                                <Pencil size={11} />
                               </span>
                             )}
                           </button>
@@ -830,11 +824,11 @@ export default function DailyOrdersSection({
                       )}
                     </td>
 
-                    {/* Horario Mañana (Checkbox) */}
+                    {/* Horario Mañana (Excluyente con Tarde) */}
                     <td style={{ textAlign: 'center', background: 'rgba(6, 182, 212, 0.02)' }}>
                       <button
                         type="button"
-                        onClick={() => handleRowChange(index, 'morning_shift', row.morning_shift ? 0 : 1)}
+                        onClick={() => handleRowChange(index, 'morning_shift', 1)}
                         style={{
                           background: 'none',
                           border: 'none',
@@ -842,17 +836,17 @@ export default function DailyOrdersSection({
                           color: row.morning_shift ? 'var(--cyan-primary)' : 'var(--text-faint)',
                           padding: '4px'
                         }}
-                        title={row.morning_shift ? 'Mañana: Marcado' : 'Mañana: Desmarcado'}
+                        title="Seleccionar Horario Mañana"
                       >
                         {row.morning_shift ? <CheckSquare size={20} /> : <Square size={20} />}
                       </button>
                     </td>
 
-                    {/* Horario Tarde (Checkbox) */}
+                    {/* Horario Tarde (Excluyente con Mañana) */}
                     <td style={{ textAlign: 'center', background: 'rgba(6, 182, 212, 0.02)' }}>
                       <button
                         type="button"
-                        onClick={() => handleRowChange(index, 'afternoon_shift', row.afternoon_shift ? 0 : 1)}
+                        onClick={() => handleRowChange(index, 'afternoon_shift', 1)}
                         style={{
                           background: 'none',
                           border: 'none',
@@ -860,7 +854,7 @@ export default function DailyOrdersSection({
                           color: row.afternoon_shift ? 'var(--cyan-primary)' : 'var(--text-faint)',
                           padding: '4px'
                         }}
-                        title={row.afternoon_shift ? 'Tarde: Marcado' : 'Tarde: Desmarcado'}
+                        title="Seleccionar Horario Tarde"
                       >
                         {row.afternoon_shift ? <CheckSquare size={20} /> : <Square size={20} />}
                       </button>
@@ -1025,7 +1019,7 @@ export default function DailyOrdersSection({
                                       try {
                                         const res = await fetch(`/api/sales-notes/${row.sales_note_id}`).then(r => r.json());
                                         if (res.success && res.data) {
-                                          onOpenAddPayment(res.data);
+                                          onOpenAddPayment({ ...res.data, default_payment_date: activeDay?.dateIso });
                                         }
                                       } catch (err) {
                                         console.error('Error al abrir abono:', err);
@@ -1102,6 +1096,268 @@ export default function DailyOrdersSection({
           <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
             Total actividades / pedidos hoy: <strong style={{ color: 'var(--text-main)' }}>{rows.length}</strong>
           </span>
+        </div>
+      </div>
+
+      {/* MOBILE CARDS VIEW (VISTA OPTIMIZADA PARA CELULARES - ALMACÉN Y VENTAS) */}
+      <div className="block md:hidden space-y-3.5 mb-6">
+        {isLoading ? (
+          <div className="text-center p-8 bg-slate-800/40 rounded-2xl border border-slate-700/60 text-slate-400">
+            <RefreshCw size={24} className="animate-spin mx-auto mb-2 text-cyan-400" />
+            <p className="text-xs font-bold">Cargando pedidos para {activeDay.dateFull}...</p>
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="text-center p-6 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-200 dark:border-slate-700/60 text-slate-500 dark:text-slate-400">
+            <ClipboardList size={28} className="mx-auto mb-2 text-slate-400 dark:text-slate-500" />
+            <div className="font-extrabold text-slate-800 dark:text-white text-sm">No hay pedidos programados para hoy</div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Usa "+ Nueva Nota" o "Sincronizar" para importar.</p>
+          </div>
+        ) : (
+          rows.map((row, index) => {
+            const acc = getAccountStatus(row);
+            const isDelivered = row.status === 'ENTREGADO';
+            const cleanCustomer = (row.activity_or_customer || '').replace(/\s*\([A-Za-z0-9_-]+\)\s*$/, '') || 'Cliente';
+            const hasBalance = Number(row.note_balance ?? 0) > 0 && row.note_status !== 'ANULADO';
+
+            return (
+              <div 
+                key={index}
+                className="bg-white dark:bg-slate-900 border-2 rounded-2xl p-3.5 shadow-sm dark:shadow-md flex flex-col gap-3 transition-all relative overflow-hidden"
+                style={{
+                  borderColor: isDelivered ? 'rgba(16, 185, 129, 0.45)' : (acc ? acc.border : 'var(--border-glass)')
+                }}
+              >
+                {/* Top Bar: Row #, Customer Name, Note Code badge & Actions */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <span className="w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-mono text-xs font-black flex items-center justify-center shrink-0">
+                      {index + 1}
+                    </span>
+
+                    {row.sales_note_id ? (
+                      <div className="min-w-0 flex-1">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenSalesNote(row.sales_note_id)}
+                          className="text-left font-black text-sm sm:text-base text-slate-900 dark:text-white hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors truncate block w-full cursor-pointer"
+                          title="Toca para editar la nota en el celular"
+                        >
+                          {cleanCustomer}
+                        </button>
+                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                          {row.sales_note_code && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenSalesNote(row.sales_note_id)}
+                              className="text-[11px] font-mono font-extrabold px-2 py-0.5 rounded-md bg-cyan-50 dark:bg-cyan-500/20 border border-cyan-200 dark:border-cyan-500/40 text-cyan-700 dark:text-cyan-300 inline-flex items-center gap-1 hover:bg-cyan-100 dark:hover:bg-cyan-500/30 cursor-pointer"
+                            >
+                              <span>{row.sales_note_code}</span>
+                              <Pencil size={11} />
+                            </button>
+                          )}
+                          {(row.note_seller_name || supervisor) && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 inline-flex items-center gap-1">
+                              <User size={10} className="text-cyan-600 dark:text-cyan-400" />
+                              <span>{row.note_seller_name || supervisor}</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <input
+                        type="text"
+                        className="form-input text-xs font-bold py-1 px-2 text-slate-800 dark:text-white bg-slate-50 dark:bg-slate-800/80 rounded-lg flex-1 border border-slate-200 dark:border-slate-700"
+                        placeholder="CLIENTE O ACTIVIDAD..."
+                        value={row.activity_or_customer || ''}
+                        onChange={e => handleRowChange(index, 'activity_or_customer', e.target.value)}
+                      />
+                    )}
+                  </div>
+
+                  {/* Quick WhatsApp / Print Receipt & Delete buttons */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    {row.sales_note_id && onOpenPrintNote && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const res = await fetch(`/api/sales-notes/${row.sales_note_id}`).then(r => r.json());
+                            if (res.success && res.data) onOpenPrintNote(res.data);
+                          } catch (err) {
+                            console.error('Error al cargar comprobante:', err);
+                          }
+                        }}
+                        className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:text-cyan-600 dark:hover:text-cyan-400 active:scale-95 cursor-pointer"
+                        title="Ver comprobante y WhatsApp"
+                      >
+                        <Printer size={15} />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveRow(index)}
+                      className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 text-rose-500 dark:text-rose-400 hover:text-rose-600 active:scale-95 cursor-pointer"
+                      title="Eliminar fila"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Shift Pills (Turno Mañana O Turno Tarde - Mutuamente Excluyentes) */}
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleRowChange(index, 'morning_shift', 1)}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border transition-all cursor-pointer ${
+                      row.morning_shift
+                        ? 'bg-cyan-50 dark:bg-cyan-500/20 border-cyan-400 dark:border-cyan-500/60 text-cyan-800 dark:text-cyan-300 font-extrabold shadow-xs'
+                        : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400'
+                    }`}
+                  >
+                    <Sun size={14} className={row.morning_shift ? 'text-cyan-600 dark:text-cyan-400' : 'text-slate-400'} />
+                    <span>Mañana</span>
+                    {row.morning_shift ? <CheckSquare size={15} className="text-cyan-600 dark:text-cyan-400" /> : <Square size={15} />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleRowChange(index, 'afternoon_shift', 1)}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border transition-all cursor-pointer ${
+                      row.afternoon_shift
+                        ? 'bg-amber-50 dark:bg-amber-500/20 border-amber-400 dark:border-amber-500/60 text-amber-800 dark:text-amber-300 font-extrabold shadow-xs'
+                        : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400'
+                    }`}
+                  >
+                    <Sunset size={14} className={row.afternoon_shift ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'} />
+                    <span>Tarde</span>
+                    {row.afternoon_shift ? <CheckSquare size={15} className="text-amber-600 dark:text-amber-400" /> : <Square size={15} />}
+                  </button>
+                </div>
+
+                {/* Financial Status Pill & Quick Collect Payment Button */}
+                {acc && (
+                  <div className="flex items-center justify-between gap-2 p-2 rounded-xl border" style={{ background: acc.bg, borderColor: acc.border }}>
+                    <div 
+                      onClick={() => row.sales_note_id && handleOpenSalesNote(row.sales_note_id)}
+                      className="flex items-center gap-1.5 text-xs font-extrabold cursor-pointer flex-1 truncate"
+                      style={{ color: acc.color }}
+                    >
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: acc.color }} />
+                      <span className="truncate">{acc.label}</span>
+                      <span className="font-mono text-xs ml-1 shrink-0 font-black">{acc.detail}</span>
+                    </div>
+
+                    {/* Quick Abono / Cobro button if pending balance */}
+                    {onOpenAddPayment && hasBalance && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const res = await fetch(`/api/sales-notes/${row.sales_note_id}`).then(r => r.json());
+                            if (res.success && res.data) onOpenAddPayment({ ...res.data, default_payment_date: activeDay?.dateIso });
+                          } catch (err) {
+                            console.error('Error al abrir abono:', err);
+                          }
+                        }}
+                        className="py-1 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-[11px] flex items-center gap-1 shadow-sm shrink-0 active:scale-95 cursor-pointer"
+                        title="Cobrar abono rápido al cliente"
+                      >
+                        <DollarSign size={13} />
+                        <span>Cobrar</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Delivery Action & Status */}
+                <div className="space-y-2">
+                  {/* Dropdown status */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 font-bold shrink-0">Estado:</span>
+                    <select
+                      className="form-select py-1.5 px-2 text-xs font-extrabold rounded-lg flex-1 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                      value={row.status || 'EN PREPARACIÓN'}
+                      onChange={e => handleRowChange(index, 'status', e.target.value)}
+                    >
+                      <option value="EN PREPARACIÓN">EN PREPARACIÓN</option>
+                      <option value="EN CAMINO">EN CAMINO</option>
+                      <option value="IMPRESO">IMPRESO</option>
+                      <option value="ENTREGADO">ENTREGADO</option>
+                      <option value="PENDIENTE">PENDIENTE</option>
+                      <option value="CANCELADO">CANCELADO</option>
+                    </select>
+                  </div>
+
+                  {/* Big Touch Delivery Button (Solo vector, sin emoticón) */}
+                  {row.sales_note_id && !isDelivered && (
+                    <button
+                      type="button"
+                      onClick={() => setDeliveryModalRow(row)}
+                      className="w-full py-3 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/20 active:scale-[0.98] transition-transform cursor-pointer"
+                    >
+                      <Truck size={18} />
+                      <span>Confirmar Entrega y Cobrar</span>
+                    </button>
+                  )}
+
+                  {isDelivered && (
+                    <div className="w-full py-2 px-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-300 dark:border-emerald-500/40 text-emerald-700 dark:text-emerald-400 font-extrabold text-xs flex items-center justify-center gap-2">
+                      <CheckCircle2 size={16} />
+                      <span>¡Entrega Confirmada! (Stock descontado)</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Observations (Address, delivery details) */}
+                <div className="space-y-1.5 pt-1 border-t border-slate-100 dark:border-slate-800/80">
+                  <input
+                    type="text"
+                    className="form-input text-xs py-1.5 px-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700/60 text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 w-full"
+                    placeholder="Observación de entrega (Ej. Mercado La Pampa)..."
+                    value={row.observations || ''}
+                    onChange={e => handleRowChange(index, 'observations', e.target.value)}
+                  />
+                  <input
+                    type="text"
+                    className="form-input text-xs py-1 px-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/30 border-slate-200 dark:border-slate-700/40 text-cyan-700 dark:text-cyan-300 font-semibold placeholder:text-slate-400 dark:placeholder:text-slate-500 w-full"
+                    placeholder="Extra: Descontar flete, detalle cobro..."
+                    value={row.extra_observations || ''}
+                    onChange={e => handleRowChange(index, 'extra_observations', e.target.value)}
+                  />
+                  <input
+                    type="text"
+                    className="form-input text-xs py-1 px-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/20 border-slate-200 dark:border-slate-700/30 text-slate-600 dark:text-slate-400 placeholder:text-slate-400 dark:placeholder:text-slate-500 w-full"
+                    placeholder="Tarea operativa o pendiente..."
+                    value={row.pending_tasks || ''}
+                    onChange={e => handleRowChange(index, 'pending_tasks', e.target.value)}
+                  />
+                </div>
+              </div>
+            );
+          })
+        )}
+
+        {/* Mobile Card View Footer: Add manual row & save */}
+        <div className="flex items-center justify-between gap-2 pt-2">
+          <button
+            type="button"
+            onClick={handleAddRow}
+            className="btn btn-secondary text-xs py-2 px-3 gap-1.5 font-bold flex-1"
+          >
+            <Plus size={14} color="var(--emerald-success)" />
+            <span>+ Fila Manual</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={isSaving}
+            className="btn btn-emerald text-xs py-2 px-4 gap-1.5 font-bold flex-1 justify-center"
+          >
+            <Save size={14} />
+            <span>{isSaving ? 'Guardando...' : 'Guardar Orden'}</span>
+          </button>
         </div>
       </div>
 
@@ -1420,8 +1676,9 @@ export default function DailyOrdersSection({
                         }}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-main)' }}>
-                            👤 {client.customerName}
+                          <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-main)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <User size={13} />
+                            <span>{client.customerName}</span>
                           </span>
                           <span style={{ fontSize: '0.70rem', fontWeight: 700, color: 'var(--cyan-primary)' }}>
                             {totalBoxes} cj reservadas
@@ -1429,8 +1686,9 @@ export default function DailyOrdersSection({
                         </div>
 
                         {client.customerPhone && (
-                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                            📞 Tel: {client.customerPhone}
+                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <Phone size={11} />
+                            <span>Tel: {client.customerPhone}</span>
                           </div>
                         )}
 
@@ -1538,6 +1796,7 @@ export default function DailyOrdersSection({
         row={deliveryModalRow}
         onDeliverySuccess={() => {
           fetchDailyOrders();
+          if (onOrderDelivered) onOrderDelivered();
           setToast('¡Entrega y liquidación registradas con éxito!');
           setTimeout(() => setToast(''), 4000);
         }}
