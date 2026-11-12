@@ -563,7 +563,7 @@ export default function DailyOrdersSection({
             title="Crear nueva nota de venta"
           >
             <Plus size={15} />
-            <span>+ Nueva Nota</span>
+            <span>Nueva Nota</span>
           </button>
 
           <button
@@ -1091,7 +1091,7 @@ export default function DailyOrdersSection({
             title="Agregar fila manual a la planilla"
           >
             <Plus size={14} color="var(--emerald-success)" />
-            <span>+ Agregar Fila Manual</span>
+            <span>Agregar Fila Manual</span>
           </button>
           <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
             Total actividades / pedidos hoy: <strong style={{ color: 'var(--text-main)' }}>{rows.length}</strong>
@@ -1346,7 +1346,7 @@ export default function DailyOrdersSection({
             className="btn btn-secondary text-xs py-2 px-3 gap-1.5 font-bold flex-1"
           >
             <Plus size={14} color="var(--emerald-success)" />
-            <span>+ Fila Manual</span>
+            <span>Fila Manual</span>
           </button>
 
           <button

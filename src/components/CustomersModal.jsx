@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Users, 
   Search, 
@@ -7,22 +8,27 @@ import {
   DollarSign, 
   Phone, 
   MapPin, 
-  Calendar, 
-  ArrowRight, 
+  ArrowLeft,
   X,
-  CreditCard,
-  Printer
+  Printer,
+  Pencil,
+  AlertCircle
 } from 'lucide-react';
 
 export default function CustomersModal({ 
   isOpen, 
   onClose, 
   onSelectCustomerForNewNote,
-  onOpenPrintNote 
+  onOpenEditNote,
+  onOpenPrintNote,
+  onOpenAddPayment,
+  refreshTrigger
 }) {
   const [customers, setCustomers] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterMode, setFilterMode] = useState('ALL'); // 'ALL' | 'DEBT'
   const [selectedCustomerId, setSelectedCustomerId] = useState(null);
+  const [mobileShowDetail, setMobileShowDetail] = useState(false);
   const [customerStatement, setCustomerStatement] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -39,7 +45,7 @@ export default function CustomersModal({
       .then(res => res.json())
       .then(res => {
         if (res.success) {
-          setCustomers(res.data);
+          setCustomers(res.data || []);
           if (res.data.length > 0 && !selectedCustomerId) {
             setSelectedCustomerId(res.data[0].id);
           }
@@ -51,12 +57,14 @@ export default function CustomersModal({
   useEffect(() => {
     if (isOpen) {
       fetchCustomers();
+    } else {
+      setMobileShowDetail(false);
     }
-  }, [isOpen, searchTerm]);
+  }, [isOpen, searchTerm, refreshTrigger]);
 
   // Fetch statement when customer is selected
   useEffect(() => {
-    if (selectedCustomerId) {
+    if (isOpen && selectedCustomerId) {
       fetch(`/api/customers/${selectedCustomerId}/statement`)
         .then(res => res.json())
         .then(res => {
@@ -65,7 +73,19 @@ export default function CustomersModal({
           }
         });
     }
-  }, [selectedCustomerId]);
+  }, [isOpen, selectedCustomerId, refreshTrigger]);
+
+  const filteredCustomers = useMemo(() => {
+    if (filterMode === 'DEBT') {
+      return customers.filter(c => Number(c.total_debt) > 0);
+    }
+    return customers;
+  }, [customers, filterMode]);
+
+  const handleSelectCustomer = (id) => {
+    setSelectedCustomerId(id);
+    setMobileShowDetail(true);
+  };
 
   const handleCreateCustomer = async (e) => {
     e.preventDefault();
@@ -76,7 +96,7 @@ export default function CustomersModal({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: newCustName.trim(),
+          name: newCustName.trim().toUpperCase(),
           phone: newCustPhone.trim(),
           address: newCustAddress.trim(),
           store_location_url: newCustLocationUrl.trim(),
@@ -92,9 +112,25 @@ export default function CustomersModal({
         setNewCustLocationUrl('');
         fetchCustomers();
         setSelectedCustomerId(res.data.id);
+        setMobileShowDetail(true);
       }
     } catch (err) {
       alert('Error: ' + err.message);
+    }
+  };
+
+  const handleInspectNote = async (noteId, mode = 'print') => {
+    try {
+      const res = await fetch(`/api/sales-notes/${noteId}`).then(r => r.json());
+      if (res.success && res.data) {
+        if (mode === 'edit' && onOpenEditNote) {
+          onOpenEditNote(res.data);
+        } else if (onOpenPrintNote) {
+          onOpenPrintNote(res.data);
+        }
+      }
+    } catch (err) {
+      console.error('Error al cargar la nota:', err);
     }
   };
 
@@ -102,124 +138,128 @@ export default function CustomersModal({
 
   const formatBs = (v) => Number(v || 0).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  return (
-    <div className="modal-overlay" style={{ zIndex: 1060 }}>
+  return createPortal(
+    <div 
+      onClick={onClose}
+      className="fixed inset-0 z-[9998] bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-2 sm:p-5 overflow-hidden"
+    >
       <div 
-        className="modal-content" 
-        style={{ 
-          maxWidth: '1200px', 
-          width: '95%',
-          maxHeight: '92vh',
-          display: 'flex',
-          flexDirection: 'column'
-        }}
+        onClick={e => e.stopPropagation()}
+        className="w-full max-w-6xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl sm:rounded-3xl shadow-2xl flex flex-col h-[92vh] sm:h-[88vh] overflow-hidden"
       >
         {/* Header */}
-        <div style={{
-          padding: '20px 24px',
-          borderBottom: '1px solid var(--border-glass)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          background: 'var(--bg-modal-header, rgba(10, 16, 30, 0.95))'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{
-              width: '42px',
-              height: '42px',
-              borderRadius: '12px',
-              background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#ffffff'
-            }}>
-              <Users size={22} />
+        <div className="px-4 py-3.5 sm:px-6 sm:py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 bg-slate-50/80 dark:bg-slate-800/60 shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+              <Users size={20} />
             </div>
-            <div>
-              <h3 className="font-heading" style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-main, #f8fafc)', margin: 0 }}>
+            <div className="min-w-0">
+              <h3 className="text-sm sm:text-lg font-black text-slate-900 dark:text-white m-0 truncate">
                 Cartera de Clientes & Resumen de Notas
               </h3>
-              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0 }}>
-                Equivalente al Libro Resumen: Historial de compras, pedidos y deudas por cobrar
+              <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 m-0 truncate">
+                Toca un cliente para ver sus notas, registrar cobros/abonos o editar su pedido
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="btn btn-secondary" style={{ padding: '6px', border: 'none' }}>
-            <X size={20} />
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-8 h-8 rounded-xl bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white flex items-center justify-center cursor-pointer shrink-0"
+          >
+            <X size={18} />
           </button>
         </div>
 
-        {/* Content Body: Left Master List, Right Customer Detail */}
-        <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', flex: 1, overflow: 'hidden' }}>
-          {/* Left Column: Customer Directory */}
-          <div style={{
-            borderRight: '1px solid var(--border-glass)',
-            background: 'rgba(0, 0, 0, 0.25)',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden'
-          }}>
-            {/* Search and Add Header */}
-            <div style={{ padding: '16px', borderBottom: '1px solid var(--border-subtle)' }}>
-              <div style={{ position: 'relative', marginBottom: '10px' }}>
-                <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+        {/* Responsive Master-Detail Body */}
+        <div className="flex-1 flex flex-col md:grid md:grid-cols-12 overflow-hidden min-h-0">
+          
+          {/* LEFT COLUMN: Customer Directory (Visible on desktop always, on mobile when !mobileShowDetail) */}
+          <div className={`md:col-span-4 lg:col-span-4 border-r border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/60 flex flex-col overflow-hidden min-h-0 ${
+            mobileShowDetail ? 'hidden md:flex' : 'flex flex-1'
+          }`}>
+            {/* Search, Filter & New Customer Button */}
+            <div className="p-3 sm:p-4 border-b border-slate-200 dark:border-slate-800 space-y-2.5 shrink-0">
+              <div className="relative">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input 
                   type="text" 
-                  className="form-input" 
-                  placeholder="Buscar cliente, teléfono..."
+                  className="form-input text-xs font-semibold h-10 w-full" 
+                  placeholder="Buscar cliente, código o teléfono..."
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
-                  style={{ paddingLeft: '34px', fontSize: '0.8rem' }}
+                  style={{ paddingLeft: '34px' }}
                 />
               </div>
 
+              {/* Filter Tabs: Todos vs Con Deuda */}
+              <div className="grid grid-cols-2 gap-1.5 bg-slate-200/70 dark:bg-slate-800 p-1 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setFilterMode('ALL')}
+                  className={`py-1.5 px-2 rounded-lg text-xs font-extrabold cursor-pointer transition-all ${
+                    filterMode === 'ALL'
+                      ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs'
+                      : 'text-slate-600 dark:text-slate-400'
+                  }`}
+                >
+                  Todos ({customers.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterMode('DEBT')}
+                  className={`py-1.5 px-2 rounded-lg text-xs font-extrabold cursor-pointer transition-all ${
+                    filterMode === 'DEBT'
+                      ? 'bg-rose-600 text-white shadow-2xs'
+                      : 'text-rose-600 dark:text-rose-400'
+                  }`}
+                >
+                  Con Deuda ({customers.filter(c => Number(c.total_debt) > 0).length})
+                </button>
+              </div>
+
               <button 
+                type="button"
                 onClick={() => setIsAddingCustomer(!isAddingCustomer)}
-                className="btn btn-indigo"
-                style={{ width: '100%', fontSize: '0.78rem', padding: '7px', justifyContent: 'center' }}
+                className="w-full py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-extrabold flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
               >
                 <Plus size={15} />
-                <span>{isAddingCustomer ? 'Cancelar Registro' : '+ Nuevo Cliente'}</span>
+                <span>{isAddingCustomer ? 'Cancelar Registro' : 'Nuevo Cliente'}</span>
               </button>
 
               {/* Inline Form to add Customer */}
               {isAddingCustomer && (
-                <form onSubmit={handleCreateCustomer} style={{ marginTop: '12px', background: 'rgba(0,0,0,0.4)', padding: '12px', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>
+                <form onSubmit={handleCreateCustomer} className="p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-2">
                   <input 
                     type="text" 
-                    className="form-input" 
+                    className="form-input text-xs h-9" 
                     placeholder="Nombre completo *"
                     value={newCustName}
                     onChange={e => setNewCustName(e.target.value)}
-                    style={{ fontSize: '0.78rem', marginBottom: '8px' }}
                     required
                   />
                   <input 
                     type="text" 
-                    className="form-input" 
+                    className="form-input text-xs h-9" 
                     placeholder="Teléfono / Celular"
                     value={newCustPhone}
                     onChange={e => setNewCustPhone(e.target.value)}
-                    style={{ fontSize: '0.78rem', marginBottom: '8px' }}
                   />
                   <input 
                     type="text" 
-                    className="form-input" 
+                    className="form-input text-xs h-9" 
                     placeholder="Dirección / Mercado"
                     value={newCustAddress}
                     onChange={e => setNewCustAddress(e.target.value)}
-                    style={{ fontSize: '0.78rem', marginBottom: '8px' }}
                   />
                   <input 
                     type="text" 
-                    className="form-input" 
-                    placeholder="📍 Link Ubicación Google Maps (Opcional)"
+                    className="form-input text-xs h-9" 
+                    placeholder="Link Ubicación Google Maps (Opcional)"
                     value={newCustLocationUrl}
                     onChange={e => setNewCustLocationUrl(e.target.value)}
-                    style={{ fontSize: '0.78rem', marginBottom: '8px' }}
                   />
-                  <button type="submit" className="btn btn-emerald" style={{ width: '100%', fontSize: '0.75rem', padding: '6px' }}>
+                  <button type="submit" className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold cursor-pointer">
                     Guardar Cliente
                   </button>
                 </form>
@@ -227,232 +267,255 @@ export default function CustomersModal({
             </div>
 
             {/* Customers Scrollable List */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '10px' }}>
-              {customers.map(c => {
-                const isSelected = c.id === selectedCustomerId;
-                const hasDebt = Number(c.total_debt) > 0;
-                return (
-                  <div 
-                    key={c.id}
-                    onClick={() => setSelectedCustomerId(c.id)}
-                    style={{
-                      padding: '12px 14px',
-                      borderRadius: '10px',
-                      marginBottom: '8px',
-                      cursor: 'pointer',
-                      background: isSelected ? 'rgba(99, 102, 241, 0.2)' : 'rgba(15, 23, 42, 0.4)',
-                      border: `1px solid ${isSelected ? 'var(--indigo-brand)' : 'var(--border-subtle)'}`,
-                      transition: 'all 0.15s ease'
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <span style={{ fontWeight: 800, fontSize: '0.86rem', color: '#f8fafc' }}>
-                        {c.name}
-                      </span>
-                      <span style={{ fontFamily: 'monospace', fontSize: '0.7rem', color: 'var(--cyan-primary)' }}>
-                        {c.code}
-                      </span>
-                    </div>
-
-                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <MapPin size={12} color={c.store_location_url ? 'var(--cyan-primary)' : 'var(--text-muted)'} />
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {c.address || 'Cochabamba'}
-                      </span>
-                      {c.store_location_url && (
-                        <span style={{ color: 'var(--cyan-primary)', fontSize: '0.68rem', fontWeight: 600 }}>[GPS]</span>
-                      )}
-                    </div>
-
-                    <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.74rem' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>
-                        {c.total_notes || 0} notas
-                      </span>
-                      {hasDebt ? (
-                        <span style={{ color: '#fb7185', fontWeight: 800 }}>
-                          Debe: Bs {formatBs(c.total_debt)}
+            <div className="flex-1 overflow-y-auto p-2.5 sm:p-3 space-y-2">
+              {isLoading ? (
+                <div className="py-10 text-center text-xs text-slate-400 font-bold">
+                  Cargando cartera de clientes...
+                </div>
+              ) : filteredCustomers.length === 0 ? (
+                <div className="py-10 text-center text-xs text-slate-400">
+                  No se encontraron clientes con ese filtro.
+                </div>
+              ) : (
+                filteredCustomers.map(c => {
+                  const isSelected = c.id === selectedCustomerId;
+                  const hasDebt = Number(c.total_debt) > 0;
+                  return (
+                    <div 
+                      key={c.id}
+                      onClick={() => handleSelectCustomer(c.id)}
+                      className={`p-3 rounded-xl border transition-all cursor-pointer ${
+                        isSelected
+                          ? 'bg-indigo-50/90 dark:bg-indigo-500/20 border-indigo-500 shadow-xs'
+                          : 'bg-white dark:bg-slate-800/70 border-slate-200 dark:border-slate-700/80 hover:border-indigo-400'
+                      }`}
+                    >
+                      <div className="flex justify-between items-start gap-2">
+                        <span className="font-black text-xs sm:text-sm text-slate-900 dark:text-white truncate">
+                          {c.name}
                         </span>
-                      ) : (
-                        <span style={{ color: '#34d399', fontWeight: 600 }}>
-                          Al día
+                        <span className="font-mono text-[11px] font-bold text-cyan-600 dark:text-cyan-400 shrink-0">
+                          {c.code}
                         </span>
-                      )}
+                      </div>
+
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1.5 truncate">
+                        <MapPin size={12} className="text-cyan-600 dark:text-cyan-400 shrink-0" />
+                        <span className="truncate">{c.address || 'Cochabamba'}</span>
+                        {c.store_location_url && (
+                          <span className="text-cyan-600 dark:text-cyan-400 text-[10px] font-bold shrink-0">[GPS]</span>
+                        )}
+                      </div>
+
+                      <div className="mt-2 flex justify-between items-center text-xs">
+                        <span className="text-slate-500 dark:text-slate-400 font-semibold">
+                          {c.total_notes || 0} notas
+                        </span>
+                        {hasDebt ? (
+                          <span className="text-rose-600 dark:text-rose-400 font-black font-mono">
+                            Debe: Bs {formatBs(c.total_debt)}
+                          </span>
+                        ) : (
+                          <span className="text-emerald-600 dark:text-emerald-400 font-bold">
+                            Al día
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           </div>
 
-          {/* Right Column: Statement & Past Notes for Selected Customer (Like RESUMEN 2026) */}
-          <div style={{ padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+          {/* RIGHT COLUMN: Statement & Past Notes for Selected Customer */}
+          <div className={`md:col-span-8 lg:col-span-8 p-3.5 sm:p-6 overflow-y-auto flex-col min-h-0 bg-white dark:bg-slate-900 ${
+            mobileShowDetail ? 'flex flex-1' : 'hidden md:flex'
+          }`}>
+            {/* Mobile Back Button to Customer List */}
+            <button
+              type="button"
+              onClick={() => setMobileShowDetail(false)}
+              className="md:hidden mb-3 py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-extrabold inline-flex items-center gap-2 self-start cursor-pointer"
+            >
+              <ArrowLeft size={15} />
+              <span>Volver a la lista de clientes</span>
+            </button>
+
             {customerStatement ? (
-              <>
+              <div className="space-y-4">
                 {/* Customer Profile Banner */}
-                <div style={{
-                  background: 'rgba(15, 23, 42, 0.6)',
-                  border: '1px solid var(--border-glass)',
-                  borderRadius: '14px',
-                  padding: '20px',
-                  marginBottom: '20px',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: '16px'
-                }}>
+                <div className="bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <h2 className="font-heading" style={{ fontSize: '1.4rem', fontWeight: 900, color: '#f8fafc', margin: 0 }}>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 className="text-base sm:text-xl font-black text-slate-900 dark:text-white m-0">
                         {customerStatement.customer.name}
                       </h2>
-                      <span className="badge badge-cyan" style={{ fontSize: '0.74rem' }}>
+                      <span className="badge badge-cyan text-xs">
                         {customerStatement.customer.code}
                       </span>
                     </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '14px', marginTop: '6px', fontSize: '0.8rem', color: 'var(--text-muted)', alignItems: 'center' }}>
-                      <span>📍 {customerStatement.customer.address || 'Mercado La Pampa'}</span>
-                      <span>📞 {customerStatement.customer.phone || 'Sin teléfono'}</span>
+                    <div className="flex flex-wrap gap-3 mt-1.5 text-xs text-slate-500 dark:text-slate-400 items-center">
+                      <span className="inline-flex items-center gap-1">
+                        <MapPin size={13} className="text-cyan-600 dark:text-cyan-400" />
+                        {customerStatement.customer.address || 'Mercado La Pampa'}
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <Phone size={13} />
+                        {customerStatement.customer.phone || 'Sin teléfono'}
+                      </span>
                       {customerStatement.customer.store_location_url && (
                         <a 
                           href={customerStatement.customer.store_location_url} 
                           target="_blank" 
                           rel="noreferrer"
-                          className="btn btn-secondary"
-                          style={{ 
-                            fontSize: '0.72rem', 
-                            padding: '3px 8px', 
-                            color: 'var(--cyan-primary)', 
-                            border: '1px solid rgba(6, 182, 212, 0.4)', 
-                            textDecoration: 'none',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px'
-                          }}
+                          className="text-xs font-bold text-cyan-600 dark:text-cyan-400 underline inline-flex items-center gap-1"
                         >
                           <MapPin size={12} />
-                          <span>Ver Ubicación en Maps</span>
+                          <span>Ver en Maps</span>
                         </a>
                       )}
                     </div>
                   </div>
 
                   <button 
+                    type="button"
                     onClick={() => {
                       onSelectCustomerForNewNote && onSelectCustomerForNewNote(customerStatement.customer);
                       onClose();
                     }}
-                    className="btn btn-primary"
-                    style={{ fontSize: '0.85rem', padding: '9px 18px', gap: '8px' }}
+                    className="btn btn-primary text-xs py-2.5 px-4 gap-1.5 font-extrabold shrink-0 justify-center"
                   >
-                    <Plus size={16} />
-                    <span>+ Nueva Nota para este Cliente</span>
+                    <Plus size={15} />
+                    <span>Nueva Nota</span>
                   </button>
                 </div>
 
-                {/* 3 KPIs (Equivalent to C5 = SUM(C6:C7) from RESUMEN 2026) */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px', marginBottom: '24px' }}>
-                  <div style={{ background: 'rgba(6, 182, 212, 0.08)', border: '1px solid rgba(6, 182, 212, 0.25)', padding: '14px 18px', borderRadius: '12px' }}>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>TOTAL COMPRAS ACUMULADAS</div>
-                    <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--cyan-primary)', marginTop: '4px', fontFamily: 'monospace' }}>
+                {/* 3 KPIs of Customer */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3.5">
+                  <div className="bg-cyan-50/70 dark:bg-cyan-500/10 border border-cyan-200 dark:border-cyan-500/30 p-3.5 rounded-xl">
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400 font-extrabold uppercase">Total Compras</div>
+                    <div className="text-base sm:text-xl font-black text-cyan-700 dark:text-cyan-400 mt-0.5 font-mono">
                       Bs {formatBs(customerStatement.summary?.total_invoiced)}
                     </div>
                   </div>
 
-                  <div style={{ background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.25)', padding: '14px 18px', borderRadius: '12px' }}>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>TOTAL ABONADO / PAGADO</div>
-                    <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--emerald-success)', marginTop: '4px', fontFamily: 'monospace' }}>
+                  <div className="bg-emerald-50/70 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 p-3.5 rounded-xl">
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400 font-extrabold uppercase">Total Abonado / Pagado</div>
+                    <div className="text-base sm:text-xl font-black text-emerald-600 dark:text-emerald-400 mt-0.5 font-mono">
                       Bs {formatBs(customerStatement.summary?.total_paid)}
                     </div>
                   </div>
 
-                  <div style={{ background: 'rgba(244, 63, 94, 0.08)', border: '1px solid rgba(244, 63, 94, 0.25)', padding: '14px 18px', borderRadius: '12px' }}>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>SALDO PENDIENTE DE COBRO</div>
-                    <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#fb7185', marginTop: '4px', fontFamily: 'monospace' }}>
+                  <div className="bg-rose-50/70 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/30 p-3.5 rounded-xl">
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400 font-extrabold uppercase">Saldo Pendiente (Deuda)</div>
+                    <div className="text-base sm:text-xl font-black text-rose-600 dark:text-rose-400 mt-0.5 font-mono">
                       Bs {formatBs(customerStatement.summary?.total_balance_due)}
                     </div>
                   </div>
                 </div>
 
-                {/* History Table (Like the Hoja 1, Hoja 2... Hoja 42 entries) */}
-                <h4 className="font-heading" style={{ fontSize: '1rem', fontWeight: 700, color: '#f8fafc', marginBottom: '12px' }}>
-                  Historial de Notas de Despacho del Cliente
-                </h4>
+                {/* Customer Notes List (Responsive Cards with Cobrar / Editar / Ver) */}
+                <div>
+                  <h4 className="text-xs sm:text-sm font-black uppercase tracking-wider text-slate-700 dark:text-slate-200 mb-2.5">
+                    Notas de Venta del Cliente ({customerStatement.notes?.length || 0})
+                  </h4>
 
-                <div className="data-table-container" style={{ flex: 1 }}>
-                  <table className="data-table" style={{ fontSize: '0.8rem' }}>
-                    <thead>
-                      <tr>
-                        <th>N° Nota</th>
-                        <th>Fecha</th>
-                        <th>Destino</th>
-                        <th style={{ textAlign: 'right' }}>Total (Bs)</th>
-                        <th style={{ textAlign: 'right' }}>A Cuenta (Bs)</th>
-                        <th style={{ textAlign: 'right' }}>Saldo (Bs)</th>
-                        <th style={{ textAlign: 'center' }}>Estado</th>
-                        <th style={{ textAlign: 'center' }}>Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {customerStatement.notes && customerStatement.notes.length > 0 ? (
-                        customerStatement.notes.map(n => (
-                          <tr key={n.id}>
-                            <td style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--cyan-primary)' }}>
-                              {n.note_code}
-                            </td>
-                            <td>{n.date}</td>
-                            <td>{n.delivery_destination || '-'}</td>
-                            <td style={{ textAlign: 'right', fontWeight: 700 }}>
-                              Bs {formatBs(n.total_amount)}
-                            </td>
-                            <td style={{ textAlign: 'right', color: '#34d399', fontWeight: 600 }}>
-                              Bs {formatBs(n.paid_amount)}
-                            </td>
-                            <td style={{ textAlign: 'right', color: Number(n.balance_amount) > 0 ? '#fb7185' : '#94a3b8', fontWeight: 800 }}>
-                              Bs {formatBs(n.balance_amount)}
-                            </td>
-                            <td style={{ textAlign: 'center' }}>
-                              <span className={n.status === 'PAGADO' ? 'badge badge-emerald' : n.status === 'ANULADO' ? 'badge badge-rose' : 'badge badge-amber'}>
-                                {n.status}
-                              </span>
-                            </td>
-                            <td style={{ textAlign: 'center' }}>
-                              <button 
-                                onClick={async () => {
-                                  const res = await fetch(`/api/sales-notes/${n.id}`).then(r => r.json());
-                                  if (res.success) {
-                                    onOpenPrintNote && onOpenPrintNote(res.data);
-                                  }
-                                }}
-                                className="btn btn-secondary"
-                                style={{ padding: '4px 8px', fontSize: '0.72rem' }}
-                                title="Ver / Imprimir Nota"
+                  {customerStatement.notes && customerStatement.notes.length > 0 ? (
+                    <div className="space-y-2.5">
+                      {customerStatement.notes.map(n => {
+                        const hasDebt = Number(n.balance_amount) > 0 && n.status !== 'ANULADO';
+                        return (
+                          <div
+                            key={n.id}
+                            className={`p-3 sm:p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                              hasDebt
+                                ? 'bg-amber-50/40 dark:bg-slate-800/80 border-amber-300 dark:border-amber-500/40'
+                                : 'bg-slate-50/70 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700'
+                            }`}
+                          >
+                            <div className="space-y-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-mono text-xs font-black text-cyan-600 dark:text-cyan-400">
+                                  {n.note_code}
+                                </span>
+                                <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                                  Fecha: {n.date}
+                                </span>
+                                <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
+                                  n.status === 'PAGADO'
+                                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300'
+                                    : n.status === 'ANULADO'
+                                    ? 'bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-300'
+                                    : 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300'
+                                }`}>
+                                  {n.status}
+                                </span>
+                              </div>
+
+                              <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-3 flex-wrap">
+                                <span>Total: <strong className="text-slate-900 dark:text-white font-mono">Bs {formatBs(n.total_amount)}</strong></span>
+                                <span>A/C: <strong className="text-emerald-600 dark:text-emerald-400 font-mono">Bs {formatBs(n.paid_amount)}</strong></span>
+                                <span>Saldo: <strong className={`font-mono ${hasDebt ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400'}`}>Bs {formatBs(n.balance_amount)}</strong></span>
+                              </div>
+                            </div>
+
+                            {/* Action Buttons: Cobrar / A Cuenta, Editar, Ver */}
+                            <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap justify-end shrink-0">
+                              {hasDebt && onOpenAddPayment && (
+                                <button
+                                  type="button"
+                                  onClick={() => onOpenAddPayment({ ...n, customer_name: customerStatement.customer.name })}
+                                  className="flex-1 sm:flex-none py-1.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold inline-flex items-center justify-center gap-1 shadow-xs cursor-pointer"
+                                  title="Registrar pago o abono a cuenta"
+                                >
+                                  <DollarSign size={13} />
+                                  <span>Cobrar / A Cuenta</span>
+                                </button>
+                              )}
+
+                              {n.status !== 'ANULADO' && onOpenEditNote && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleInspectNote(n.id, 'edit')}
+                                  className="py-1.5 px-2.5 rounded-lg bg-cyan-50 hover:bg-cyan-100 dark:bg-cyan-500/15 dark:hover:bg-cyan-500/25 border border-cyan-200 dark:border-cyan-500/30 text-cyan-700 dark:text-cyan-300 text-xs font-extrabold inline-flex items-center justify-center gap-1 cursor-pointer"
+                                  title="Editar productos o precios de esta nota"
+                                >
+                                  <Pencil size={13} />
+                                  <span>Editar</span>
+                                </button>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={() => handleInspectNote(n.id, 'print')}
+                                className="py-1.5 px-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-extrabold inline-flex items-center justify-center gap-1 cursor-pointer"
+                                title="Ver / Imprimir comprobante"
                               >
                                 <Printer size={13} />
                                 <span>Ver</span>
                               </button>
-                            </td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td colSpan="8" style={{ textAlign: 'center', padding: '35px', color: 'var(--text-muted)' }}>
-                            Este cliente no tiene notas de venta registradas todavía.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="py-8 text-center text-xs text-slate-400 bg-slate-50 dark:bg-slate-800/40 rounded-xl">
+                      Este cliente no tiene notas de venta registradas todavía.
+                    </div>
+                  )}
                 </div>
-              </>
+              </div>
             ) : (
-              <div style={{ textAlign: 'center', padding: '50px', color: 'var(--text-muted)' }}>
-                Selecciona un cliente de la lista para ver su consolidado.
+              <div className="py-16 text-center text-xs text-slate-400">
+                Selecciona un cliente de la lista para ver sus notas y saldos.
               </div>
             )}
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

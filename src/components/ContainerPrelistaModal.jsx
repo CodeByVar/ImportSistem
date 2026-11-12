@@ -1865,7 +1865,7 @@ export default function ContainerPrelistaModal({
                       <input
                         type="text"
                         className="form-input"
-                        placeholder="Ej. ERICK GARCIA"
+                        placeholder="Ej. FERRETERÍA CENTRAL"
                         value={bulkResCustomerName}
                         onChange={(e) => setBulkResCustomerName(e.target.value)}
                         required

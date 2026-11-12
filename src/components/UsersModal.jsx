@@ -385,7 +385,7 @@ export default function UsersModal({
                   }}
                 >
                   <UserPlus size={15} />
-                  <span>+ Registrar Nuevo Trabajador</span>
+                  <span>Registrar Nuevo Trabajador</span>
                 </button>
               )}
             </div>

@@ -294,10 +294,23 @@ export default function App() {
                   setEditNoteData(null);
                   setIsNewNoteModalOpen(true);
                 }}
+                onOpenEditNote={(note) => {
+                  setEditNoteData(note);
+                  setIsNewNoteModalOpen(true);
+                }}
+                onOpenPrintNote={(note) => {
+                  setPrintNoteData(note);
+                  setIsPrintNoteModalOpen(true);
+                }}
+                onOpenAddPayment={(note) => {
+                  setAddPaymentNoteData(note);
+                  setIsAddPaymentModalOpen(true);
+                }}
                 onOpenNewProduct={() => setIsProductModalOpen(true)}
                 onOpenNewContainer={() => setIsContainerModalOpen(true)}
                 onOpenCustomers={() => setIsCustomersModalOpen(true)}
                 onSelectTab={safeSetActiveTab}
+                refreshTrigger={notesRefreshTrigger}
                 currentUser={currentUser}
               />
             )}
@@ -504,12 +517,22 @@ export default function App() {
         isOpen={isCustomersModalOpen}
         onClose={() => setIsCustomersModalOpen(false)}
         onSelectCustomerForNewNote={(customer) => {
+          setEditNoteData(null);
+          setIsNewNoteModalOpen(true);
+        }}
+        onOpenEditNote={(note) => {
+          setEditNoteData(note);
           setIsNewNoteModalOpen(true);
         }}
         onOpenPrintNote={(note) => {
           setPrintNoteData(note);
           setIsPrintNoteModalOpen(true);
         }}
+        onOpenAddPayment={(note) => {
+          setAddPaymentNoteData(note);
+          setIsAddPaymentModalOpen(true);
+        }}
+        refreshTrigger={notesRefreshTrigger}
       />
 
       {/* 8. Add Payment / Abono Modal */}

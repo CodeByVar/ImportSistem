@@ -15,10 +15,14 @@ export default function ModernDashboard({
   containers = [],
   onOpenNewMovement, 
   onOpenNewNote, 
+  onOpenEditNote,
+  onOpenPrintNote,
+  onOpenAddPayment,
   onOpenNewProduct, 
   onOpenNewContainer,
   onOpenCustomers,
   onSelectTab,
+  refreshTrigger,
   currentUser
 }) {
   const role = currentUser?.role || 'SUPER_ADMIN';
@@ -33,7 +37,7 @@ export default function ModernDashboard({
           <div className="flex items-center justify-between bg-orange-50 dark:bg-orange-950/40 p-3 rounded-2xl border border-orange-200 dark:border-orange-900/60 text-xs">
             <div className="flex items-center gap-2 text-orange-800 dark:text-orange-300 font-bold">
               <Eye size={15} />
-              <span>👑 Modo Previsualización: Estás viendo el Dashboard exclusivo para <strong>Ventas</strong></span>
+              <span>Modo Previsualización: Estás viendo el Dashboard exclusivo para <strong>Ventas</strong></span>
             </div>
             <button
               type="button"
@@ -47,8 +51,12 @@ export default function ModernDashboard({
         <SalesDashboard
           products={products}
           onOpenNewNote={onOpenNewNote}
+          onOpenEditNote={onOpenEditNote}
+          onOpenPrintNote={onOpenPrintNote}
+          onOpenAddPayment={onOpenAddPayment}
           onOpenCustomers={onOpenCustomers}
           onSelectTab={onSelectTab}
+          refreshTrigger={refreshTrigger}
           currentUser={currentUser}
         />
       </div>

@@ -98,7 +98,7 @@ export default function ContainersSection({
           style={{ fontSize: '0.82rem', padding: '9px 18px' }}
         >
           <Plus size={16} />
-          <span>+ Registrar Nuevo Embarque / Camión</span>
+          <span>Registrar Nuevo Embarque / Camión</span>
         </button>
       </div>
 

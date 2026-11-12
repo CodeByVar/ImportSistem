@@ -157,6 +157,24 @@ function ProductSearchCombobox({ products, item, onSelectProduct, onClearProduct
   );
 }
 
+function getActiveSessionUserName() {
+  try {
+    const savedAuth = localStorage.getItem('siscontrol_auth_session');
+    if (savedAuth) {
+      const parsed = JSON.parse(savedAuth);
+      if (parsed?.user?.name) return parsed.user.name.toUpperCase();
+    }
+    const savedActive = localStorage.getItem('siscontrol_active_user');
+    if (savedActive) {
+      const parsed = JSON.parse(savedActive);
+      if (parsed?.name) return parsed.name.toUpperCase();
+    }
+  } catch (e) {
+    // ignore
+  }
+  return 'DANIEL';
+}
+
 export default function NewSalesNoteModal({ 
   isOpen, 
   onClose, 
@@ -178,7 +196,7 @@ export default function NewSalesNoteModal({
 
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [dueDate, setDueDate] = useState(new Date().toISOString().split('T')[0]);
-  const [sellerName, setSellerName] = useState('DANIEL');
+  const [sellerName, setSellerName] = useState(() => getActiveSessionUserName());
   const [deliveryType, setDeliveryType] = useState('A su tienda');
   const [destination, setDestination] = useState('');
   const [deliveryLocationUrl, setDeliveryLocationUrl] = useState('');
@@ -939,21 +957,10 @@ export default function NewSalesNoteModal({
 
         {/* Modal Content: Step 1 vs Step 2 */}
         {!selectedCustomer ? (
-          <div style={{ overflowY: 'auto', padding: '24px', flex: 1 }}>
+          <div className="flex-1 overflow-y-auto p-3 sm:p-6">
             {errorMessage && (
-              <div style={{
-                background: 'rgba(244, 63, 94, 0.12)',
-                border: '1px solid rgba(244, 63, 94, 0.3)',
-                borderRadius: '10px',
-                padding: '12px',
-                marginBottom: '16px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                fontSize: '0.84rem',
-                color: '#fb7185'
-              }}>
-                <AlertCircle size={16} />
+              <div className="bg-rose-50 dark:bg-rose-500/15 border border-rose-200 dark:border-rose-500/30 rounded-xl p-3 mb-3.5 flex items-center gap-2 text-xs sm:text-sm text-rose-600 dark:text-rose-400 font-semibold">
+                <AlertCircle size={16} className="shrink-0" />
                 <span>{errorMessage}</span>
               </div>
             )}
@@ -961,11 +968,11 @@ export default function NewSalesNoteModal({
             {!isCreatingCustomer ? (
               <div>
                 {/* Search & Action Banner */}
-                <div className="bg-gradient-to-r from-cyan-50/80 to-indigo-50/80 dark:from-cyan-950/30 dark:to-indigo-950/30 border border-cyan-200 dark:border-cyan-500/40 rounded-2xl p-4 sm:p-5 mb-5 flex justify-between items-center flex-wrap gap-3.5">
-                  <div>
+                <div className="bg-gradient-to-r from-cyan-50/80 to-indigo-50/80 dark:from-cyan-950/30 dark:to-indigo-950/30 border border-cyan-200 dark:border-cyan-500/40 rounded-2xl p-3.5 sm:p-5 mb-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+                  <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <User size={20} className="text-cyan-600 dark:text-cyan-400" />
-                      <h4 className="text-base sm:text-lg font-black text-slate-900 dark:text-white m-0">
+                      <User size={18} className="text-cyan-600 dark:text-cyan-400 shrink-0" />
+                      <h4 className="text-sm sm:text-lg font-black text-slate-900 dark:text-white m-0">
                         ¿A qué cliente se emitirá esta nota?
                       </h4>
                     </div>
@@ -981,20 +988,20 @@ export default function NewSalesNoteModal({
                       setNewCustomerName(customerSearch.trim());
                       setErrorMessage('');
                     }}
-                    className="btn btn-primary py-2 px-4 text-xs font-bold gap-2 cursor-pointer"
+                    className="btn btn-primary py-2.5 px-4 text-xs font-bold gap-2 cursor-pointer w-full sm:w-auto justify-center shrink-0"
                   >
                     <Plus size={16} />
-                    <span>+ Crear Nuevo Cliente</span>
+                    <span>Crear Nuevo Cliente</span>
                   </button>
                 </div>
 
                 {/* Search Input */}
-                <div className="relative mb-4">
-                  <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                <div className="relative mb-3.5">
+                  <Search size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                   <input
                     type="text"
-                    className="form-input pl-11 h-12 text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white border-cyan-500/40 rounded-xl w-full"
-                    placeholder="Buscar por nombre de cliente, teléfono, código o dirección / mercado..."
+                    className="form-input pl-10 pr-9 h-11 sm:h-12 text-xs sm:text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white border-cyan-500/40 rounded-xl w-full"
+                    placeholder="Buscar por nombre, teléfono, código o dirección..."
                     value={customerSearch}
                     onChange={e => setCustomerSearch(e.target.value)}
                     autoFocus
@@ -1003,24 +1010,26 @@ export default function NewSalesNoteModal({
                     <button
                       type="button"
                       onClick={() => setCustomerSearch('')}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
                     >
-                      <X size={18} />
+                      <X size={17} />
                     </button>
                   )}
                 </div>
 
                 {/* Subtitle */}
-                <div className="mb-3 text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">
+                <div className="mb-2.5 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">
                   {customerSearch.trim() ? `Resultados de búsqueda (${filteredCustomers.length}):` : 'Clientes Registrados en Base de Datos:'}
                 </div>
 
                 {/* Customer List */}
-                <div className="flex flex-col gap-2.5 max-h-[440px] overflow-y-auto pr-1">
+                <div className="flex flex-col gap-2 max-h-[420px] overflow-y-auto pr-0.5">
                   {filteredCustomers.length === 0 ? (
-                    <div className="text-center p-8 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700">
-                      <div className="text-3xl mb-2">🔍</div>
-                      <div className="font-extrabold text-slate-900 dark:text-white text-base mb-1">
+                    <div className="text-center p-6 sm:p-8 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700">
+                      <div className="w-10 h-10 rounded-xl bg-cyan-50 dark:bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 flex items-center justify-center mx-auto mb-2.5">
+                        <Search size={20} />
+                      </div>
+                      <div className="font-extrabold text-slate-900 dark:text-white text-sm sm:text-base mb-1">
                         No se encontró ningún cliente con "{customerSearch}"
                       </div>
                       <div className="text-xs text-slate-500 dark:text-slate-400 mb-4">
@@ -1033,7 +1042,7 @@ export default function NewSalesNoteModal({
                           setNewCustomerName(customerSearch.trim().toUpperCase());
                           setErrorMessage('');
                         }}
-                        className="btn btn-emerald text-xs py-2 px-4 font-bold gap-2 cursor-pointer mx-auto"
+                        className="btn btn-emerald text-xs py-2.5 px-4 font-bold gap-2 cursor-pointer mx-auto justify-center"
                       >
                         <Plus size={16} />
                         <span>Crear cliente "{customerSearch.trim()}"</span>
@@ -1044,35 +1053,35 @@ export default function NewSalesNoteModal({
                       <div
                         key={c.id}
                         onClick={() => handleSelectCustomer(c)}
-                        className="bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 hover:border-cyan-500/60 hover:bg-cyan-50/50 dark:hover:bg-cyan-500/10 rounded-xl p-3.5 flex items-center justify-between gap-3 cursor-pointer transition-all shadow-xs"
+                        className="bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 hover:border-cyan-500/60 hover:bg-cyan-50/50 dark:hover:bg-cyan-500/10 rounded-xl p-3 flex items-center justify-between gap-2.5 cursor-pointer transition-all shadow-xs"
                       >
-                        <div className="flex items-center gap-3.5 flex-1 min-w-0">
-                          <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30 flex items-center justify-center font-black text-sm shrink-0">
+                        <div className="flex items-center gap-2.5 sm:gap-3.5 flex-1 min-w-0">
+                          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30 flex items-center justify-center font-black text-xs sm:text-sm shrink-0">
                             {(c.name || 'C').slice(0, 2).toUpperCase()}
                           </div>
 
                           <div className="overflow-hidden flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-extrabold text-slate-900 dark:text-white text-sm sm:text-base">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-extrabold text-slate-900 dark:text-white text-xs sm:text-base truncate">
                                 {c.name}
                               </span>
-                              <span className="badge badge-indigo text-[11px] font-mono">
+                              <span className="badge badge-indigo text-[10px] sm:text-[11px] font-mono">
                                 {c.code || `CLI-${c.id}`}
                               </span>
                             </div>
 
-                            <div className="flex gap-3 text-xs text-slate-500 dark:text-slate-400 mt-1 flex-wrap">
+                            <div className="flex gap-2.5 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-1 flex-wrap">
                               {c.phone ? (
                                 <span className="flex items-center gap-1">
-                                  <Phone size={12} className="text-emerald-500" /> {c.phone}
+                                  <Phone size={11} className="text-emerald-500 shrink-0" /> {c.phone}
                                 </span>
                               ) : (
                                 <span className="text-slate-400">Sin teléfono</span>
                               )}
 
                               {c.address ? (
-                                <span className="flex items-center gap-1">
-                                  <MapPin size={12} className="text-cyan-500" /> {c.address}
+                                <span className="flex items-center gap-1 truncate">
+                                  <MapPin size={11} className="text-cyan-500 shrink-0" /> <span className="truncate">{c.address}</span>
                                 </span>
                               ) : (
                                 <span className="text-slate-400">Sin dirección</span>
@@ -1080,7 +1089,7 @@ export default function NewSalesNoteModal({
 
                               {c.store_location_url && (
                                 <span className="text-cyan-600 dark:text-cyan-400 font-semibold flex items-center gap-1">
-                                  📍 Ubicación GPS
+                                  <MapPin size={11} className="shrink-0" /> GPS
                                 </span>
                               )}
                             </div>
@@ -1089,9 +1098,9 @@ export default function NewSalesNoteModal({
 
                         <button
                           type="button"
-                          className="btn btn-primary text-xs py-2 px-3.5 font-bold gap-1.5 shrink-0"
+                          className="btn btn-primary text-[11px] sm:text-xs py-1.5 sm:py-2 px-2.5 sm:px-3.5 font-bold gap-1 shrink-0"
                         >
-                          <span>Crear Nota</span>
+                          <span>Elegir</span>
                           <span>→</span>
                         </button>
                       </div>
@@ -1100,19 +1109,19 @@ export default function NewSalesNoteModal({
                 </div>
               </div>
             ) : (
-              /* Inline New Customer Creation Form */
-              <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 rounded-2xl p-4 sm:p-6 mb-5">
-                <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30 flex items-center justify-center shrink-0">
-                      <User size={20} />
+              /* Inline New Customer Creation Form - 100% Mobile Responsive */
+              <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 rounded-2xl p-3.5 sm:p-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2.5">
+                  <div className="flex items-start sm:items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30 flex items-center justify-center shrink-0 mt-0.5 sm:mt-0">
+                      <User size={19} />
                     </div>
-                    <div>
-                      <h4 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white m-0">
+                    <div className="min-w-0">
+                      <h4 className="text-sm sm:text-lg font-extrabold text-slate-900 dark:text-white m-0">
                         Registrar Nuevo Cliente
                       </h4>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 m-0">
-                        Se guardará en la cartera de clientes y se iniciará la nota para él de inmediato.
+                      <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 m-0 mt-0.5 leading-snug">
+                        Se guardará en la cartera de clientes y se iniciará la nota de inmediato.
                       </p>
                     </div>
                   </div>
@@ -1123,20 +1132,20 @@ export default function NewSalesNoteModal({
                       setIsCreatingCustomer(false);
                       setErrorMessage('');
                     }}
-                    className="btn btn-secondary text-xs py-1.5 px-3"
+                    className="btn btn-secondary text-xs py-2 px-3 w-full sm:w-auto justify-center shrink-0"
                   >
                     ← Volver al Buscador
                   </button>
                 </div>
 
                 <form onSubmit={handleCreateAndSelectCustomer}>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4 mb-4 sm:mb-5">
                     <div>
-                      <label className="form-label">Nombre del Cliente / Negocio *</label>
+                      <label className="form-label text-[11px] sm:text-xs">Nombre del Cliente / Negocio *</label>
                       <input
                         type="text"
-                        className="form-input text-sm h-11"
-                        placeholder="Ej. ERICK GARCIA o COMERCIAL HNOS."
+                        className="form-input text-xs sm:text-sm h-10 sm:h-11 w-full"
+                        placeholder="Ej. FERRETERÍA CENTRAL o COMERCIAL BOLIVIA"
                         value={newCustomerName}
                         onChange={e => setNewCustomerName(e.target.value)}
                         autoFocus
@@ -1145,21 +1154,21 @@ export default function NewSalesNoteModal({
                     </div>
 
                     <div>
-                      <label className="form-label">Teléfono / WhatsApp</label>
+                      <label className="form-label text-[11px] sm:text-xs">Teléfono / WhatsApp</label>
                       <input
                         type="text"
-                        className="form-input text-sm h-11"
-                        placeholder="Ej. 68579599"
+                        className="form-input text-xs sm:text-sm h-10 sm:h-11 w-full"
+                        placeholder="Ej. 70012345"
                         value={newCustomerPhone}
                         onChange={e => setNewCustomerPhone(e.target.value)}
                       />
                     </div>
 
                     <div>
-                      <label className="form-label">Dirección / Mercado del Cliente</label>
+                      <label className="form-label text-[11px] sm:text-xs">Dirección / Mercado del Cliente</label>
                       <input
                         type="text"
-                        className="form-input text-sm h-11"
+                        className="form-input text-xs sm:text-sm h-10 sm:h-11 w-full"
                         placeholder="Ej. MERCADO LA PAMPA / PASILLO 3"
                         value={newCustomerAddress}
                         onChange={e => setNewCustomerAddress(e.target.value)}
@@ -1167,10 +1176,10 @@ export default function NewSalesNoteModal({
                     </div>
 
                     <div>
-                      <label className="form-label">Link Ubicación Google Maps / GPS de su tienda (Opcional)</label>
+                      <label className="form-label text-[11px] sm:text-xs">Link Ubicación Google Maps / GPS (Opcional)</label>
                       <input
                         type="text"
-                        className="form-input text-sm h-11"
+                        className="form-input text-xs sm:text-sm h-10 sm:h-11 w-full"
                         placeholder="https://maps.app.goo.gl/... o enlace GPS"
                         value={newCustomerLocationUrl}
                         onChange={e => setNewCustomerLocationUrl(e.target.value)}
@@ -1178,24 +1187,24 @@ export default function NewSalesNoteModal({
                     </div>
                   </div>
 
-                  <div className="flex justify-end gap-3">
+                  <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2.5 pt-1">
                     <button
                       type="button"
                       onClick={() => setIsCreatingCustomer(false)}
-                      className="btn btn-secondary py-2.5 px-4 text-xs font-bold"
+                      className="btn btn-secondary py-2.5 px-4 text-xs sm:text-sm font-bold w-full sm:w-auto justify-center"
                     >
                       Cancelar
                     </button>
                     <button
                       type="submit"
                       disabled={isSavingCustomer}
-                      className="btn btn-primary py-2.5 px-6 font-black text-sm gap-2"
+                      className="btn btn-primary py-2.5 px-4 sm:px-6 font-black text-xs sm:text-sm gap-2 w-full sm:w-auto justify-center"
                     >
                       {isSavingCustomer ? (
                         <span>Guardando...</span>
                       ) : (
                         <>
-                          <Check size={16} />
+                          <Check size={16} className="shrink-0" />
                           <span>Guardar y Crear Nota para este Cliente</span>
                         </>
                       )}
@@ -1742,7 +1751,7 @@ export default function NewSalesNoteModal({
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                   <span style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    {existingPayments.length > 0 ? '+ Registrar Abono Adicional:' : 'Registrar Pago / Abono Inicial:'}
+                    {existingPayments.length > 0 ? 'Registrar Abono Adicional:' : 'Registrar Pago / Abono Inicial:'}
                   </span>
                   <button
                     type="button"
@@ -1751,7 +1760,7 @@ export default function NewSalesNoteModal({
                     style={{ fontSize: '0.72rem', padding: '3px 9px', color: 'var(--cyan-primary)', borderColor: 'rgba(6, 182, 212, 0.4)', gap: '4px', fontWeight: 700 }}
                   >
                     <Plus size={12} />
-                    <span>+ Agregar Abono</span>
+                    <span>Agregar Abono</span>
                   </button>
                 </div>
 
