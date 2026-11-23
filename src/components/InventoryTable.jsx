@@ -151,7 +151,7 @@ export default function InventoryTable({
           </div>
           <div>
             <h3 className="font-heading" style={{ fontSize: '1.3rem', fontWeight: 800, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              {isAlmacen ? 'Stock Disponible en Bodega' : 'Catálogo de Inventario Multi-Marca'}
+              Stock Inventario
               <span className="badge badge-indigo" style={{ fontSize: '0.72rem' }}>
                 {isAlmacen ? `${filteredProducts.length.toLocaleString()} con Stock` : `${products.length.toLocaleString()} Productos`}
               </span>
@@ -159,7 +159,7 @@ export default function InventoryTable({
             <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
               {isAlmacen
                 ? 'Productos disponibles en bodega con stock actual · Solo precio por mayor visible'
-                : 'Control físico por cajas y sueltas, bodegas, costos FOB, márgenes y listas de precios'}
+                : 'Control físico por cajas y sueltas, bodegas y listas de precios (descuento automático por notas)'}
             </p>
           </div>
         </div>
@@ -293,13 +293,12 @@ export default function InventoryTable({
               {canSeePrices && !canSeeWholesaleOnly && <th style={{ textAlign: 'right' }}>Precio Especial (Bs)</th>}
               <th style={{ width: '190px' }}>Stock Físico & Disp.</th>
               {!isAlmacen && <th style={{ width: '220px' }}>📦 Reservas (Cajas / Cliente)</th>}
-              <th style={{ textAlign: 'center', width: '90px' }}>Acción</th>
             </tr>
           </thead>
           <tbody>
             {filteredProducts.length === 0 ? (
               <tr>
-                <td colSpan="11" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                <td colSpan="10" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
                   No se encontraron productos con los filtros seleccionados.
                 </td>
               </tr>
@@ -438,45 +437,6 @@ export default function InventoryTable({
                         )}
                       </td>
                     )}
-
-                    {/* Quick action buttons */}
-                    <td style={{ textAlign: 'center' }}>
-                      <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-                        {/* Entrada: solo para roles que pueden editar movimientos */}
-                        {['SUPER_ADMIN', 'ADMIN', 'ALMACEN'].includes(userRole) && (
-                          <button
-                            onClick={() => onOpenNewMovement('ENTRADA', p)}
-                            className="btn btn-secondary"
-                            style={{ padding: '5px 7px', borderRadius: '6px' }}
-                            title="Registrar Entrada / Recepción"
-                          >
-                            <ArrowDownLeft size={13} color="#34d399" />
-                          </button>
-                        )}
-                        {/* Salida: para roles que pueden despachar */}
-                        {['SUPER_ADMIN', 'ADMIN', 'ALMACEN', 'VENTAS'].includes(userRole) && (
-                          <button
-                            onClick={() => onOpenNewMovement('SALIDA', p)}
-                            className="btn btn-secondary"
-                            style={{ padding: '5px 7px', borderRadius: '6px' }}
-                            title="Registrar Venta / Salida"
-                          >
-                            <ArrowUpRight size={13} color="#38bdf8" />
-                          </button>
-                        )}
-                        {/* Editar Producto: solo para Admin / Super Admin */}
-                        {['SUPER_ADMIN', 'ADMIN'].includes(userRole) && onEditProduct && (
-                          <button
-                            onClick={() => onEditProduct(p)}
-                            className="btn btn-secondary"
-                            style={{ padding: '5px 7px', borderRadius: '6px' }}
-                            title="Editar precios, empaque o datos del producto"
-                          >
-                            <Edit3 size={13} color="#f59e0b" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
                   </tr>
                 );
               })
