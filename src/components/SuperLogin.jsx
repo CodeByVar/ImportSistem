@@ -194,11 +194,7 @@ export default function SuperLogin({ onLoginSuccess }) {
           
           {/* Top Header: Official Logo + Bolivia Badge */}
           <div className="flex items-center justify-between gap-4">
-            <img
-              src="/logo-importadora-rivero.png"
-              alt="Importadora Rivero - Simplificamos tu esfuerzo"
-              className="h-11 sm:h-13 w-auto object-contain select-none"
-            />
+            <BrandLogo variant="capsule-dark" size="sm" />
 
             <div className="flex items-center gap-1.5 text-xs font-semibold text-[#0D0D0D] bg-[#F8F8FA] px-3 py-1.5 rounded-full border border-neutral-200 shadow-2xs shrink-0">
               <MapPin size={13} className="text-[#FF8C00]" />

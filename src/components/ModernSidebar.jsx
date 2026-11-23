@@ -66,8 +66,8 @@ export default function ModernSidebar({
                 title={item.label}
                 className={`w-10 h-10 rounded-xl sm:rounded-full flex items-center justify-center transition-all duration-200 relative group cursor-pointer ${
                   isActive
-                    ? 'bg-slate-900 text-white shadow-md shadow-slate-900/25 dark:bg-[#EA580C] dark:shadow-orange-600/30'
-                    : 'text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                    ? 'bg-[#FF8C00] text-[#0D0D0D] shadow-md shadow-orange-500/25 dark:bg-[#FF8C00] dark:shadow-orange-500/30'
+                    : 'text-slate-400 hover:text-[#A44A00] dark:hover:text-[#FFC107] hover:bg-orange-50 dark:hover:bg-slate-800/60'
                 }`}
               >
                 <Icon size={19} strokeWidth={isActive ? 2.2 : 1.8} />

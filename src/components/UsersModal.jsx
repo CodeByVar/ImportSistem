@@ -39,7 +39,7 @@ const ROLES_INFO = {
     label: 'Ventas & Despachos',
     badgeClass: 'badge-amber',
     icon: '💼',
-    color: '#EA580C',
+    color: '#FF8C00',
     description: 'Emisión de notas de venta, cartera de clientes y consulta de precios de venta (mayorista, caja, especial).'
   },
   ALMACEN: {
@@ -59,7 +59,7 @@ const ROLES_INFO = {
 };
 
 const AVATAR_COLORS = [
-  '#EA580C', '#0284c7', '#10b981', '#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#0f172a'
+  '#FF8C00', '#0284c7', '#10b981', '#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#0f172a'
 ];
 
 export default function UsersModal({ 
@@ -86,7 +86,7 @@ export default function UsersModal({
     pin_code: '',
     role: 'VENTAS',
     phone: '',
-    avatar_color: '#EA580C',
+    avatar_color: '#FF8C00',
     status: 'ACTIVO',
     notes: ''
   });
@@ -154,7 +154,7 @@ export default function UsersModal({
       pin_code: '',
       role: 'VENTAS',
       phone: '',
-      avatar_color: '#EA580C',
+      avatar_color: '#FF8C00',
       status: 'ACTIVO',
       notes: ''
     });
@@ -171,7 +171,7 @@ export default function UsersModal({
       pin_code: '', // Vacío = conservar PIN cifrado actual
       role: user.role || 'VENTAS',
       phone: user.phone || '',
-      avatar_color: user.avatar_color || '#EA580C',
+      avatar_color: user.avatar_color || '#FF8C00',
       status: user.status || 'ACTIVO',
       notes: user.notes || ''
     });
@@ -300,12 +300,12 @@ export default function UsersModal({
               width: '42px',
               height: '42px',
               borderRadius: '12px',
-              background: 'rgba(234, 88, 12, 0.12)',
-              border: '1px solid rgba(234, 88, 12, 0.25)',
+              background: 'rgba(255, 140, 0, 0.12)',
+              border: '1px solid rgba(255, 140, 0, 0.25)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#EA580C'
+              color: '#FF8C00'
             }}>
               <ShieldCheck size={22} />
             </div>
@@ -353,8 +353,8 @@ export default function UsersModal({
           {/* Active User Card Banner */}
           {currentUser && (
             <div style={{
-              background: 'rgba(234, 88, 12, 0.06)',
-              border: '1px solid rgba(234, 88, 12, 0.25)',
+              background: 'rgba(255, 140, 0, 0.06)',
+              border: '1px solid rgba(255, 140, 0, 0.25)',
               borderRadius: '16px',
               padding: '14px 18px',
               display: 'flex',
@@ -368,7 +368,7 @@ export default function UsersModal({
                   width: '40px',
                   height: '40px',
                   borderRadius: '12px',
-                  background: currentUser.avatar_color || '#EA580C',
+                  background: currentUser.avatar_color || '#FF8C00',
                   color: '#ffffff',
                   fontWeight: 900,
                   fontSize: '0.85rem',
@@ -407,7 +407,7 @@ export default function UsersModal({
                     fontWeight: 700,
                     padding: '8px 16px',
                     borderRadius: '10px',
-                    background: '#EA580C',
+                    background: '#FF8C00',
                     color: '#ffffff',
                     border: 'none',
                     display: 'flex',
@@ -439,7 +439,7 @@ export default function UsersModal({
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <UserPlus size={17} color="#EA580C" />
+                  <UserPlus size={17} color="#FF8C00" />
                   <span style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--text-main)' }}>
                     {editingUserId ? 'Editar Datos del Trabajador' : 'Registrar Nuevo Trabajador'}
                   </span>
@@ -600,7 +600,7 @@ export default function UsersModal({
                           padding: '10px 12px',
                           borderRadius: '12px',
                           border: isSelected ? `2px solid ${info.color}` : '1px solid var(--border-glass)',
-                          background: isSelected ? 'rgba(234, 88, 12, 0.08)' : 'var(--bg-dark-card)',
+                          background: isSelected ? 'rgba(255, 140, 0, 0.08)' : 'var(--bg-dark-card)',
                           cursor: 'pointer',
                           transition: 'all 0.15s ease'
                         }}
@@ -638,7 +638,7 @@ export default function UsersModal({
                           background: c,
                           cursor: 'pointer',
                           border: formData.avatar_color === c ? '2px solid #ffffff' : 'none',
-                          boxShadow: formData.avatar_color === c ? '0 0 0 2px #EA580C' : 'none'
+                          boxShadow: formData.avatar_color === c ? '0 0 0 2px #FF8C00' : 'none'
                         }}
                       />
                     ))}
@@ -671,7 +671,7 @@ export default function UsersModal({
                       fontSize: '0.78rem',
                       fontWeight: 700,
                       borderRadius: '10px',
-                      background: '#EA580C',
+                      background: '#FF8C00',
                       color: '#ffffff',
                       border: 'none',
                       cursor: 'pointer'
@@ -704,8 +704,8 @@ export default function UsersModal({
                   <div
                     key={user.id}
                     style={{
-                      background: isCurrent ? 'rgba(234, 88, 12, 0.04)' : 'rgba(15, 23, 42, 0.03)',
-                      border: isCurrent ? '1.5px solid rgba(234, 88, 12, 0.35)' : '1px solid var(--border-glass)',
+                      background: isCurrent ? 'rgba(255, 140, 0, 0.04)' : 'rgba(15, 23, 42, 0.03)',
+                      border: isCurrent ? '1.5px solid rgba(255, 140, 0, 0.35)' : '1px solid var(--border-glass)',
                       borderRadius: '14px',
                       padding: '14px 18px',
                       display: 'flex',
@@ -722,7 +722,7 @@ export default function UsersModal({
                         width: '38px',
                         height: '38px',
                         borderRadius: '12px',
-                        background: user.avatar_color || '#EA580C',
+                        background: user.avatar_color || '#FF8C00',
                         color: '#ffffff',
                         fontWeight: 900,
                         fontSize: '0.82rem',
@@ -743,7 +743,7 @@ export default function UsersModal({
                             {roleInfo.icon} {roleInfo.label}
                           </span>
                           {isCurrent && (
-                            <span style={{ fontSize: '0.68rem', color: '#EA580C', fontWeight: 800 }}>
+                            <span style={{ fontSize: '0.68rem', color: '#FF8C00', fontWeight: 800 }}>
                               (Tú)
                             </span>
                           )}
@@ -966,7 +966,7 @@ export default function UsersModal({
               fontSize: '0.76rem',
               fontWeight: 700,
               borderRadius: '9px',
-              background: '#EA580C',
+              background: '#FF8C00',
               color: '#ffffff',
               border: 'none',
               cursor: 'pointer'

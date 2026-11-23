@@ -120,7 +120,7 @@ export default function WarehouseStock({
             justifyContent: 'space-between'
           }}>
             <div>
-              <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#EA580C', textTransform: 'uppercase' }}>
+              <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#FF8C00', textTransform: 'uppercase' }}>
                 EN TRÁNSITO
               </div>
               <div className="mono" style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-main)', marginTop: '4px' }}>
@@ -131,8 +131,8 @@ export default function WarehouseStock({
               </div>
             </div>
             {/* Share bar */}
-            <div style={{ width: '100%', height: '3px', background: 'rgba(234, 88, 12, 0.15)', borderRadius: '999px', marginTop: '8px', overflow: 'hidden' }}>
-              <div style={{ width: '10%', height: '100%', background: '#EA580C', borderRadius: '999px' }} />
+            <div style={{ width: '100%', height: '3px', background: 'rgba(255, 140, 0, 0.15)', borderRadius: '999px', marginTop: '8px', overflow: 'hidden' }}>
+              <div style={{ width: '10%', height: '100%', background: '#FF8C00', borderRadius: '999px' }} />
             </div>
           </div>
         </div>
@@ -146,7 +146,7 @@ export default function WarehouseStock({
             <button
               type="button"
               onClick={() => onSelectTab('inventory')}
-              style={{ fontSize: '0.72rem', color: '#EA580C', fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}
+              style={{ fontSize: '0.72rem', color: '#FF8C00', fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}
             >
               Ver Catálogo <ArrowRight size={11} />
             </button>
@@ -192,8 +192,8 @@ export default function WarehouseStock({
                   style={{
                     padding: '8px 12px',
                     borderRadius: '10px',
-                    background: isHovered ? 'rgba(234, 88, 12, 0.05)' : 'rgba(15, 23, 42, 0.03)',
-                    border: isHovered ? '1px solid rgba(234, 88, 12, 0.25)' : '1px solid var(--border-glass)',
+                    background: isHovered ? 'rgba(255, 140, 0, 0.05)' : 'rgba(15, 23, 42, 0.03)',
+                    border: isHovered ? '1px solid rgba(255, 140, 0, 0.25)' : '1px solid var(--border-glass)',
                     transition: 'all 0.15s ease',
                     cursor: 'pointer'
                   }}
