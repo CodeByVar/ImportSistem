@@ -271,18 +271,18 @@ _¡Gracias por su preferencia! Importadora Rivero - Simplificamos tu esfuerzo._`
 
         {/* Printable Sheet Viewport */}
         <div style={{ 
-          padding: '24px', 
+          padding: '16px', 
           background: 'rgba(0, 0, 0, 0.4)', 
-          overflowY: 'auto', 
+          overflowY: 'auto',
+          overflowX: 'auto',
           maxHeight: 'calc(90vh - 80px)',
-          display: 'flex',
-          justifyContent: 'center'
+          display: 'block'
         }}>
           {/* THE PHYSICAL SHEET (Exact replica of Importadora Rivero sheet) */}
           <div 
             id="printable-sale-note" 
             className="printable-document"
-            style={getContainerStyle()}
+            style={{ ...getContainerStyle(), minWidth: '680px' }}
           >
             {/* Header Banner - Identidad Visual Importadora Rivero */}
             <div style={{
@@ -469,6 +469,37 @@ _¡Gracias por su preferencia! Importadora Rivero - Simplificamos tu esfuerzo._`
             </table>
 
             {/* Bottom Section: Payments Breakdown + Totals + Signatures */}
+            {isRestock ? (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '12px',
+                border: '1.5px solid #0f172a',
+                padding: '10px 14px',
+                background: '#f8fafc'
+              }}>
+                <div style={{ fontSize: '0.76rem', color: '#334155' }}>
+                  <div><strong>SOLICITADO POR:</strong> {note.seller_name || 'TIENDA'}</div>
+                  <div><strong>TIPO DE DOCUMENTO:</strong> Guía interna de reposición de Almacén a Tienda (Sin cobro ni deuda)</div>
+                  {note.notes && <div><strong>OBSERVACIONES:</strong> {note.notes}</div>}
+                </div>
+                <div style={{
+                  padding: '8px 14px',
+                  textAlign: 'center',
+                  fontWeight: 900,
+                  fontSize: '0.82rem',
+                  letterSpacing: '0.06em',
+                  borderRadius: '6px',
+                  border: '1.5px solid',
+                  background: note.status === 'RECIBIDO' ? '#dcfce7' : '#e0e7ff',
+                  color: note.status === 'RECIBIDO' ? '#15803d' : '#3730a3',
+                  borderColor: note.status === 'RECIBIDO' ? '#86efac' : '#a5b4fc'
+                }}>
+                  ESTADO: {note.status === 'RECIBIDO' ? 'RECIBIDO EN TIENDA' : 'EN CURSO (POR DESPACHAR)'}
+                </div>
+              </div>
+            ) : (
             <div style={{
               display: 'grid',
               gridTemplateColumns: '1.4fr 1fr',
@@ -572,6 +603,7 @@ _¡Gracias por su preferencia! Importadora Rivero - Simplificamos tu esfuerzo._`
                 </div>
               </div>
             </div>
+            )}
 
             {/* Signature footer for reception */}
             <div style={{

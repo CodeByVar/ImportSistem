@@ -552,10 +552,6 @@ export default function App() {
               ? `Pedido de reposición ${newNote.note_code || ''} enviado a Almacén (En Curso y editable).`
               : `¡Nota de venta ${newNote.note_code || ''} emitida con éxito!`
           );
-          if (newNote && newNote.items) {
-            setPrintNoteData(newNote);
-            setIsPrintNoteModalOpen(true);
-          }
         }}
         onNoteUpdated={(updatedNote) => {
           fetchData();
