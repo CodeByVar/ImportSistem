@@ -18,13 +18,15 @@ import {
   Calendar,
   Clock,
   Save,
-  RefreshCw
+  RefreshCw,
+  Store
 } from 'lucide-react';
 
-// Searchable Combobox for selecting products from entire 5,400+ DB
-function ProductSearchCombobox({ products, item, onSelectProduct, onClearProduct }) {
+// Searchable Combobox for selecting products from entire 5,400+ DB (Default: Solo con Stock > 0)
+function ProductSearchCombobox({ products, item, onSelectProduct, onClearProduct, liveStockOverrides = {} }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [isOpen, setIsOpen] = useState(false);
+  const [onlyInStock, setOnlyInStock] = useState(true);
   const containerRef = useRef(null);
 
   useEffect(() => {
@@ -37,22 +39,40 @@ function ProductSearchCombobox({ products, item, onSelectProduct, onClearProduct
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const filteredProducts = useMemo(() => {
+  const getLiveStock = (p) => {
+    if (!p) return 0;
+    if (liveStockOverrides[p.id] !== undefined) return Number(liveStockOverrides[p.id]);
+    return Number(p.current_stock || 0);
+  };
+
+  const { filteredProducts, hiddenOutOfStockCount } = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
-    if (!term) {
-      return products.slice(0, 30);
-    }
-    const words = term.split(/\s+/);
-    return products.filter(p => {
+    const words = term ? term.split(/\s+/) : [];
+
+    const matched = products.filter(p => {
+      if (words.length === 0) return true;
       const matchSku = p.sku ? p.sku.toLowerCase() : '';
       const matchName = p.name ? p.name.toLowerCase() : '';
       const matchBrand = p.brand ? p.brand.toLowerCase() : '';
       const full = `${matchSku} ${matchName} ${matchBrand}`;
       return words.every(w => full.includes(w));
-    }).slice(0, 50);
-  }, [products, searchTerm]);
+    });
+
+    const inStockMatches = matched.filter(p => getLiveStock(p) > 0);
+    const outCount = matched.length - inStockMatches.length;
+
+    const list = onlyInStock ? inStockMatches : matched;
+    return {
+      filteredProducts: list.slice(0, term ? 50 : 30),
+      hiddenOutOfStockCount: outCount
+    };
+  }, [products, searchTerm, onlyInStock, liveStockOverrides]);
 
   if (item.product_id) {
+    const displayStock = liveStockOverrides[item.product_id] !== undefined
+      ? Number(liveStockOverrides[item.product_id])
+      : Number(item.stock_now || 0);
+
     return (
       <div className="bg-cyan-50/70 dark:bg-cyan-950/30 border border-cyan-200 dark:border-cyan-500/35 rounded-xl p-2 sm:p-2.5 flex items-center justify-between gap-2 min-h-[44px]">
         <div className="flex flex-col overflow-hidden flex-1 min-w-0">
@@ -65,8 +85,8 @@ function ProductSearchCombobox({ products, item, onSelectProduct, onClearProduct
             </span>
           </div>
           <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 flex gap-2 items-center">
-            <span className={`font-bold ${(item.stock_now || 0) > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400'}`}>
-              Stock: {item.stock_now || 0}
+            <span className={`font-bold ${displayStock > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400'}`}>
+              Stock: {Math.max(0, displayStock)} u.
             </span>
             <span>• {item.units_per_box || 1} u/cj</span>
           </div>
@@ -105,52 +125,98 @@ function ProductSearchCombobox({ products, item, onSelectProduct, onClearProduct
       </div>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 z-50 bg-white dark:bg-slate-900 border border-slate-200 dark:border-cyan-500/40 shadow-2xl rounded-xl max-h-64 overflow-y-auto mt-1 p-1 text-slate-800 dark:text-slate-100 divide-y divide-slate-100 dark:divide-slate-800">
-          {filteredProducts.length === 0 ? (
-            <div className="p-3 text-center text-xs text-slate-500 dark:text-slate-400">
-              No se encontraron productos con "{searchTerm}"
-            </div>
-          ) : (
-            filteredProducts.map(p => {
-              const hasStock = (p.current_stock || 0) > 0;
-              return (
-                <div
-                  key={p.id}
-                  onClick={() => {
-                    onSelectProduct(p);
-                    setIsOpen(false);
-                    setSearchTerm('');
-                  }}
-                  className="p-2 sm:p-2.5 hover:bg-cyan-50 dark:hover:bg-cyan-500/20 cursor-pointer rounded-lg transition-colors"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5 overflow-hidden flex-1 min-w-0">
-                      <span className="font-mono font-black text-cyan-700 dark:text-cyan-300 text-[11px] bg-cyan-50 dark:bg-cyan-500/20 px-1.5 py-0.5 rounded border border-cyan-200 dark:border-cyan-500/30 shrink-0">
-                        {p.sku}
-                      </span>
-                      <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                        {p.name}
+        <div className="absolute top-full left-0 right-0 z-50 bg-white dark:bg-slate-900 border border-slate-200 dark:border-cyan-500/40 shadow-2xl rounded-xl max-h-72 overflow-y-auto mt-1 text-slate-800 dark:text-slate-100">
+          {/* Sticky Stock Filter Bar */}
+          <div className="sticky top-0 z-10 px-2 py-1.5 bg-slate-50 dark:bg-slate-800/95 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between gap-1.5 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setOnlyInStock(true)}
+              className={`px-2 py-1 rounded-lg text-[10px] font-extrabold cursor-pointer transition-colors ${
+                onlyInStock
+                  ? 'bg-emerald-600 text-white shadow-2xs'
+                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+              }`}
+            >
+              Solo con stock
+            </button>
+            <button
+              type="button"
+              onClick={() => setOnlyInStock(false)}
+              className={`px-2 py-1 rounded-lg text-[10px] font-extrabold cursor-pointer transition-colors ${
+                !onlyInStock
+                  ? 'bg-amber-500 text-white shadow-2xs'
+                  : 'bg-white dark:bg-slate-900 text-amber-700 dark:text-amber-300 border border-amber-300/70 dark:border-amber-500/40'
+              }`}
+            >
+              Ver sin stock / recién llegado {hiddenOutOfStockCount > 0 && onlyInStock ? `(+${hiddenOutOfStockCount})` : ''}
+            </button>
+          </div>
+
+          <div className="p-1 divide-y divide-slate-100 dark:divide-slate-800">
+            {filteredProducts.length === 0 ? (
+              <div className="p-3 text-center space-y-2">
+                <div className="text-xs text-slate-500 dark:text-slate-400">
+                  {onlyInStock
+                    ? `No hay productos con stock disponible para "${searchTerm}"`
+                    : `No se encontraron productos con "${searchTerm}"`}
+                </div>
+                {onlyInStock && hiddenOutOfStockCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setOnlyInStock(false)}
+                    className="px-2.5 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-500/20 border border-amber-300 dark:border-amber-500/40 text-amber-800 dark:text-amber-300 text-[11px] font-extrabold cursor-pointer"
+                  >
+                    Mostrar {hiddenOutOfStockCount} producto(s) sin stock (Recién llegado)
+                  </button>
+                )}
+              </div>
+            ) : (
+              filteredProducts.map(p => {
+                const liveSt = getLiveStock(p);
+                const hasStock = liveSt > 0;
+                return (
+                  <div
+                    key={p.id}
+                    onClick={() => {
+                      onSelectProduct({ ...p, current_stock: liveSt });
+                      setIsOpen(false);
+                      setSearchTerm('');
+                    }}
+                    className={`p-2 sm:p-2.5 cursor-pointer rounded-lg transition-colors ${
+                      hasStock
+                        ? 'hover:bg-cyan-50 dark:hover:bg-cyan-500/20'
+                        : 'bg-rose-50/40 dark:bg-rose-950/20 hover:bg-amber-50 dark:hover:bg-amber-500/15'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 overflow-hidden flex-1 min-w-0">
+                        <span className="font-mono font-black text-cyan-700 dark:text-cyan-300 text-[11px] bg-cyan-50 dark:bg-cyan-500/20 px-1.5 py-0.5 rounded border border-cyan-200 dark:border-cyan-500/30 shrink-0">
+                          {p.sku}
+                        </span>
+                        <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                          {p.name}
+                        </span>
+                      </div>
+                      <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded border shrink-0 ${
+                        hasStock 
+                          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30' 
+                          : 'bg-rose-100 text-rose-700 dark:bg-rose-500/25 dark:text-rose-300 border-rose-300 dark:border-rose-500/40'
+                      }`}>
+                        {hasStock ? `Stock: ${liveSt}` : 'SIN STOCK (0)'}
                       </span>
                     </div>
-                    <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded border shrink-0 ${
-                      hasStock 
-                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30' 
-                        : 'bg-rose-50 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300 border-rose-200 dark:border-rose-500/30'
-                    }`}>
-                      Stock: {p.current_stock || 0}
-                    </span>
-                  </div>
 
-                  <div className="mt-1 flex items-center gap-2 sm:gap-3 text-[11px] text-slate-500 dark:text-slate-400 flex-wrap">
-                    <span>📦 Cj: {p.units_per_box || 1} u</span>
-                    <span className="text-cyan-600 dark:text-cyan-400 font-bold">May: Bs {p.wholesale_price || 0}</span>
-                    <span className="text-amber-600 dark:text-amber-400 font-bold">Caj: Bs {p.box_price || 0}</span>
-                    <span className="text-purple-600 dark:text-purple-400 font-bold">Esp: Bs {p.special_price || 0}</span>
+                    <div className="mt-1 flex items-center gap-2 sm:gap-3 text-[11px] text-slate-500 dark:text-slate-400 flex-wrap">
+                      <span>Cj: {p.units_per_box || 1} u</span>
+                      <span className="text-cyan-600 dark:text-cyan-400 font-bold">May: Bs {p.wholesale_price || 0}</span>
+                      <span className="text-amber-600 dark:text-amber-400 font-bold">Caj: Bs {p.box_price || 0}</span>
+                      <span className="text-purple-600 dark:text-purple-400 font-bold">Esp: Bs {p.special_price || 0}</span>
+                    </div>
                   </div>
-                </div>
-              );
-            })
-          )}
+                );
+              })
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -175,17 +241,40 @@ function getActiveSessionUserName() {
   return 'DANIEL';
 }
 
+function getActiveSessionUserRole() {
+  try {
+    const savedAuth = localStorage.getItem('siscontrol_auth_session');
+    if (savedAuth) {
+      const parsed = JSON.parse(savedAuth);
+      if (parsed?.user?.role) return parsed.user.role;
+    }
+  } catch (e) {
+    // ignore
+  }
+  return 'VENTAS';
+}
+
 export default function NewSalesNoteModal({ 
   isOpen, 
   onClose, 
   onNoteCreated, 
   onNoteUpdated,
   onOpenPrintNote,
+  onStockQuickAdded,
   noteToEdit = null,
+  initialNoteType = 'VENTA',
   products = [] 
 }) {
   const [customers, setCustomers] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [isRestockMode, setIsRestockMode] = useState(false);
+  const [restockShift, setRestockShift] = useState('MAÑANA');
+  const [allowPendingArrival, setAllowPendingArrival] = useState(false);
+  const [liveStockOverrides, setLiveStockOverrides] = useState({});
+  const [quickStockRowId, setQuickStockRowId] = useState(null);
+  const [quickStockBoxes, setQuickStockBoxes] = useState('1');
+  const [isSavingQuickStock, setIsSavingQuickStock] = useState(false);
+  const canQuickStockIn = ['SUPER_ADMIN', 'ADMIN', 'ALMACEN'].includes(getActiveSessionUserRole());
   const [customerSearch, setCustomerSearch] = useState('');
   const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
   const [newCustomerName, setNewCustomerName] = useState('');
@@ -236,12 +325,19 @@ export default function NewSalesNoteModal({
   // Fetch customers and reset/load form on open
   useEffect(() => {
     if (isOpen) {
+      setLiveStockOverrides({});
+      setQuickStockRowId(null);
+      setQuickStockBoxes('1');
       if (noteToEdit) {
+        const editingRestock = noteToEdit.note_type === 'REPOSICION_TIENDA';
+        setIsRestockMode(editingRestock);
+        setAllowPendingArrival(Boolean(noteToEdit.pending_stock_arrival));
+        setRestockShift('MAÑANA');
         setSelectedCustomer({
           id: noteToEdit.customer_id,
-          name: noteToEdit.customer_name,
+          name: noteToEdit.customer_name || (editingRestock ? 'REPOSICIÓN TIENDA CENTRAL' : ''),
           phone: noteToEdit.customer_phone,
-          address: noteToEdit.customer_address,
+          address: noteToEdit.customer_address || (editingRestock ? 'TIENDA CENTRAL' : ''),
           store_location_url: noteToEdit.delivery_location_url
         });
         setDate(noteToEdit.date || new Date().toISOString().split('T')[0]);
@@ -340,7 +436,15 @@ export default function NewSalesNoteModal({
             .catch(err => console.error('Error fetching note details:', err));
         }
       } else {
-        setSelectedCustomer(null);
+        const startAsRestock = initialNoteType === 'REPOSICION_TIENDA';
+        setIsRestockMode(startAsRestock);
+        setAllowPendingArrival(false);
+        setRestockShift('MAÑANA');
+        setSelectedCustomer(
+          startAsRestock
+            ? { id: null, name: 'REPOSICIÓN TIENDA CENTRAL', phone: '', address: 'TIENDA CENTRAL', code: 'INTERNO' }
+            : null
+        );
         setCustomerSearch('');
         setIsCreatingCustomer(false);
         setNewCustomerName('');
@@ -351,8 +455,8 @@ export default function NewSalesNoteModal({
         setDueDate(new Date().toISOString().split('T')[0]);
         const activeCreator = getActiveSessionUserName();
         setSellerName(activeCreator);
-        setDeliveryType('A su tienda');
-        setDestination('');
+        setDeliveryType(startAsRestock ? 'Reposición a Tienda' : 'A su tienda');
+        setDestination(startAsRestock ? 'TIENDA CENTRAL' : '');
         setDeliveryLocationUrl('');
         setNotes('');
         setErrorMessage('');
@@ -401,7 +505,7 @@ export default function NewSalesNoteModal({
         })
         .catch(err => console.error('Error fetching customers:', err));
     }
-  }, [isOpen, noteToEdit]);
+  }, [isOpen, noteToEdit, initialNoteType]);
 
   // Filter customers for Step 1
   const filteredCustomers = useMemo(() => {
@@ -706,6 +810,86 @@ export default function NewSalesNoteModal({
     }
   });
 
+  // Smart Stock Validation (Option 2): Compute live shortages per product_id
+  const { stockShortages, shortageByProductId } = useMemo(() => {
+    if (isRestockMode) return { stockShortages: [], shortageByProductId: {} };
+
+    const requestedMap = new Map();
+    const metaMap = new Map();
+
+    for (const it of items) {
+      if (!it.product_id) continue;
+      const isBox = it.sale_mode === 'CAJA';
+      const qtyUnits = isBox
+        ? parseInt(it.boxes_count || 0, 10) * parseInt(it.units_per_box || 1, 10)
+        : parseInt(it.quantity || 0, 10);
+      requestedMap.set(it.product_id, (requestedMap.get(it.product_id) || 0) + qtyUnits);
+      if (!metaMap.has(it.product_id)) {
+        const prodFromCatalog = products.find(p => p.id === it.product_id);
+        const rawStock = liveStockOverrides[it.product_id] !== undefined
+          ? Number(liveStockOverrides[it.product_id])
+          : (prodFromCatalog ? Number(prodFromCatalog.current_stock || 0) : Number(it.stock_now || 0));
+        metaMap.set(it.product_id, {
+          product_id: it.product_id,
+          sku: it.sku,
+          description: it.description,
+          available: Math.max(0, rawStock),
+          units_per_box: parseInt(it.units_per_box || prodFromCatalog?.units_per_box || 1, 10)
+        });
+      }
+    }
+
+    const list = [];
+    const byId = {};
+    for (const [pid, reqQty] of requestedMap.entries()) {
+      const m = metaMap.get(pid);
+      if (m && reqQty > m.available) {
+        const entry = { ...m, requested: reqQty, missing: reqQty - m.available };
+        list.push(entry);
+        byId[pid] = entry;
+      }
+    }
+    return { stockShortages: list, shortageByProductId: byId };
+  }, [items, products, liveStockOverrides, isRestockMode]);
+
+  const handleQuickStockIn = async (item) => {
+    if (!item?.product_id) return;
+    const boxes = parseInt(quickStockBoxes, 10);
+    if (!Number.isFinite(boxes) || boxes <= 0) {
+      setErrorMessage('Ingresa una cantidad válida de cajas para el ingreso rápido.');
+      return;
+    }
+
+    setIsSavingQuickStock(true);
+    setErrorMessage('');
+    try {
+      const res = await fetch(`/api/products/${item.product_id}/quick-stock-in`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          boxes_count: boxes,
+          units_per_box: parseInt(item.units_per_box || 1, 10),
+          notes: `Ingreso rápido desde Nota (${boxes} cj)`
+        })
+      }).then(r => r.json());
+
+      if (!res.success || !res.data) {
+        setErrorMessage(res.error || 'No se pudo registrar el ingreso rápido');
+      } else {
+        const newStock = Number(res.data.current_stock || 0);
+        setLiveStockOverrides(prev => ({ ...prev, [item.product_id]: newStock }));
+        setItems(prev => prev.map(row => row.product_id === item.product_id ? { ...row, stock_now: newStock } : row));
+        setQuickStockRowId(null);
+        setQuickStockBoxes('1');
+        onStockQuickAdded && onStockQuickAdded();
+      }
+    } catch (err) {
+      setErrorMessage('Error de conexión: ' + err.message);
+    } finally {
+      setIsSavingQuickStock(false);
+    }
+  };
+
   const existingPaidSum = existingPayments.reduce((acc, p) => acc + (parseFloat(p.amount) || 0), 0);
   const newPaidSum = newPayments.reduce((acc, p) => {
     if (p.payment_method === 'POR EFECTIVO Y TRANSFERENCIA') {
@@ -757,31 +941,42 @@ export default function NewSalesNoteModal({
     // Validate items
     const validItems = items.filter(it => it.sku || it.description);
     if (validItems.length === 0) {
-      setErrorMessage('Debe agregar al menos un producto a la nota de venta.');
+      setErrorMessage(isRestockMode ? 'Debe agregar al menos un producto al pedido de reposición.' : 'Debe agregar al menos un producto a la nota de venta.');
       return;
     }
 
-    for (const it of validItems) {
-      if (!it.unit_price || parseFloat(it.unit_price) <= 0) {
-        setErrorMessage(`El precio para "${it.description || it.sku}" debe ser mayor a 0.`);
-        return;
+    if (!isRestockMode) {
+      for (const it of validItems) {
+        if (!it.unit_price || parseFloat(it.unit_price) <= 0) {
+          setErrorMessage(`El precio para "${it.description || it.sku}" debe ser mayor a 0.`);
+          return;
+        }
       }
+    }
+
+    // Smart Stock Validation (Option 2) before submit
+    if (!isRestockMode && stockShortages.length > 0 && !allowPendingArrival) {
+      setErrorMessage('Hay productos con stock insuficiente. Ajusta la cantidad, usa "Ingreso Rápido" o marca la casilla "Mercadería recién llegada".');
+      return;
     }
 
     setIsSubmitting(true);
     try {
       // Submit note
       const payload = {
-        customer_id: finalCustId,
-        customer_name: custName,
-        customer_phone: custPhone,
-        customer_address: custAddress,
+        note_type: isRestockMode ? 'REPOSICION_TIENDA' : 'VENTA',
+        allow_pending_arrival: !isRestockMode && allowPendingArrival,
+        shift: restockShift,
+        customer_id: isRestockMode ? null : finalCustId,
+        customer_name: isRestockMode ? 'REPOSICIÓN TIENDA CENTRAL' : custName,
+        customer_phone: isRestockMode ? '' : custPhone,
+        customer_address: isRestockMode ? 'TIENDA CENTRAL' : custAddress,
         date,
         due_date: dueDate,
         seller_name: sellerName,
-        delivery_type: deliveryType || 'A su tienda',
-        delivery_destination: destination || custAddress,
-        delivery_location_url: deliveryLocationUrl || selectedCustomer.store_location_url || '',
+        delivery_type: isRestockMode ? 'Reposición a Tienda' : (deliveryType || 'A su tienda'),
+        delivery_destination: isRestockMode ? (destination || 'TIENDA CENTRAL') : (destination || custAddress),
+        delivery_location_url: isRestockMode ? '' : (deliveryLocationUrl || selectedCustomer.store_location_url || ''),
         notes,
         items: validItems.map(it => ({
           product_id: it.product_id,
@@ -792,10 +987,10 @@ export default function NewSalesNoteModal({
           boxes_count: parseInt(it.boxes_count || 1, 10),
           units_per_box: parseInt(it.units_per_box || 1, 10),
           quantity: it.sale_mode === 'CAJA' ? parseInt(it.boxes_count || 1, 10) * parseInt(it.units_per_box || 1, 10) : parseInt(it.quantity || 1, 10),
-          unit_price: parseFloat(it.unit_price) || 0,
+          unit_price: isRestockMode ? 0 : (parseFloat(it.unit_price) || 0),
           warehouse_source: it.warehouse_source || 'ALMACEN'
         })),
-        payments: (() => {
+        payments: isRestockMode ? [] : (() => {
           const list = [];
           newPayments.forEach(p => {
             if (p.payment_method === 'POR EFECTIVO Y TRANSFERENCIA') {
@@ -920,19 +1115,27 @@ export default function NewSalesNoteModal({
         {/* Header Compacto y Responsivo */}
         <div className="px-3.5 py-2.5 sm:px-5 sm:py-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center gap-2 bg-white dark:bg-slate-900 shrink-0">
           <div className="flex items-center gap-2.5 min-w-0 flex-1">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white shadow-md shadow-cyan-500/30 shrink-0">
-              <Package size={19} />
+            <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center text-white shadow-md shrink-0 ${
+              isRestockMode
+                ? 'bg-gradient-to-br from-indigo-500 to-violet-600 shadow-indigo-500/30'
+                : 'bg-gradient-to-br from-cyan-500 to-blue-600 shadow-cyan-500/30'
+            }`}>
+              {isRestockMode ? <Store size={19} /> : <Package size={19} />}
             </div>
             <div className="min-w-0 flex-1">
               <h3 className="font-heading text-sm sm:text-lg font-black text-slate-900 dark:text-white m-0 truncate">
-                {noteToEdit ? `Editar Nota: ${noteToEdit.note_code}` : 'Emitir Nota de Despacho & Venta'}
+                {isRestockMode
+                  ? (noteToEdit ? `Editar Reposición: ${noteToEdit.note_code}` : 'Pedido de Reposición a Tienda')
+                  : (noteToEdit ? `Editar Nota: ${noteToEdit.note_code}` : 'Emitir Nota de Despacho & Venta')}
               </h3>
               <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 m-0 truncate">
-                {noteToEdit
-                  ? `Cliente: ${selectedCustomer?.name || noteToEdit.customer_name}`
-                  : selectedCustomer 
-                    ? `Cliente: ${selectedCustomer.name}` 
-                    : 'Paso 1: Selecciona o registra al cliente'}
+                {isRestockMode
+                  ? 'Almacén → Tienda • En curso y editable hasta confirmar llegada a tienda'
+                  : noteToEdit
+                    ? `Cliente: ${selectedCustomer?.name || noteToEdit.customer_name}`
+                    : selectedCustomer 
+                      ? `Cliente: ${selectedCustomer.name}` 
+                      : 'Paso 1: Selecciona o registra al cliente'}
               </p>
             </div>
           </div>
@@ -967,6 +1170,37 @@ export default function NewSalesNoteModal({
 
             {!isCreatingCustomer ? (
               <div>
+                {/* Quick Shortcut for Internal Store Restock Order */}
+                <div className="mb-3.5 p-3 sm:p-3.5 rounded-2xl bg-indigo-50/80 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
+                      <Store size={17} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs sm:text-sm font-black text-indigo-950 dark:text-indigo-200">
+                        ¿Pedido interno de Almacén para llenar la Tienda?
+                      </div>
+                      <div className="text-[11px] text-indigo-700/80 dark:text-indigo-300/80">
+                        Sin cobros ni deudas. Editable en curso y se confirma al llegar a tienda.
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsRestockMode(true);
+                      setSelectedCustomer({ id: null, name: 'REPOSICIÓN TIENDA CENTRAL', phone: '', address: 'TIENDA CENTRAL', code: 'INTERNO' });
+                      setDeliveryType('Reposición a Tienda');
+                      setDestination('TIENDA CENTRAL');
+                      setErrorMessage('');
+                    }}
+                    className="py-2 px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-extrabold inline-flex items-center justify-center gap-1.5 shrink-0 cursor-pointer shadow-xs"
+                  >
+                    <Store size={14} />
+                    <span>Crear Reposición Tienda</span>
+                  </button>
+                </div>
+
                 {/* Search & Action Banner */}
                 <div className="bg-gradient-to-r from-cyan-50/80 to-indigo-50/80 dark:from-cyan-950/30 dark:to-indigo-950/30 border border-cyan-200 dark:border-cyan-500/40 rounded-2xl p-3.5 sm:p-5 mb-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
                   <div className="min-w-0">
@@ -1218,60 +1452,77 @@ export default function NewSalesNoteModal({
           /* Step 2: Form Body with Customer Locked In */
           <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
             <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-4">
-              {/* Locked Customer Header Card */}
-              <div className="bg-gradient-to-r from-cyan-50/80 to-indigo-50/80 dark:from-cyan-950/30 dark:to-indigo-950/30 border border-cyan-200 dark:border-cyan-500/40 rounded-2xl p-3 sm:p-4 flex justify-between items-center flex-wrap gap-2.5">
+              {/* Locked Customer / Restock Header Card */}
+              <div className={`rounded-2xl p-3 sm:p-4 flex justify-between items-center flex-wrap gap-2.5 border ${
+                isRestockMode
+                  ? 'bg-gradient-to-r from-indigo-50/90 to-violet-50/90 dark:from-indigo-950/35 dark:to-violet-950/30 border-indigo-200 dark:border-indigo-500/40'
+                  : 'bg-gradient-to-r from-cyan-50/80 to-indigo-50/80 dark:from-cyan-950/30 dark:to-indigo-950/30 border-cyan-200 dark:border-cyan-500/40'
+              }`}>
                 <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                  <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br from-cyan-500 to-indigo-600 flex items-center justify-center text-white font-black text-xs sm:text-base shadow-md shadow-cyan-500/30 shrink-0">
-                    {(selectedCustomer.name || 'C').slice(0, 2).toUpperCase()}
+                  <div className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center text-white font-black text-xs sm:text-base shadow-md shrink-0 ${
+                    isRestockMode
+                      ? 'bg-gradient-to-br from-indigo-500 to-violet-600 shadow-indigo-500/30'
+                      : 'bg-gradient-to-br from-cyan-500 to-indigo-600 shadow-cyan-500/30'
+                  }`}>
+                    {isRestockMode ? <Store size={19} /> : (selectedCustomer.name || 'C').slice(0, 2).toUpperCase()}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-sm sm:text-lg font-black text-slate-900 dark:text-white truncate">
-                        {selectedCustomer.name}
+                        {isRestockMode ? 'REPOSICIÓN TIENDA CENTRAL' : selectedCustomer.name}
                       </span>
                       <span className="badge badge-indigo text-[10px] font-mono">
-                        {selectedCustomer.code || `CLI-${selectedCustomer.id}`}
+                        {isRestockMode ? 'TRASPASO INTERNO • EN CURSO' : (selectedCustomer.code || `CLI-${selectedCustomer.id}`)}
                       </span>
                     </div>
-                    <div className="flex gap-2.5 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5 flex-wrap">
-                      {selectedCustomer.phone && (
-                        <span className="flex items-center gap-1">
-                          <Phone size={12} className="text-emerald-500" /> {selectedCustomer.phone}
-                        </span>
-                      )}
-                      {selectedCustomer.address && (
-                        <span className="flex items-center gap-1 truncate max-w-[200px] sm:max-w-none">
-                          <MapPin size={12} className="text-cyan-500 shrink-0" /> <span className="truncate">{selectedCustomer.address}</span>
-                        </span>
-                      )}
-                      {(selectedCustomer.store_location_url || deliveryLocationUrl) && (
-                        <a 
-                          href={deliveryLocationUrl || selectedCustomer.store_location_url} 
-                          target="_blank" 
-                          rel="noreferrer" 
-                          className="text-cyan-600 dark:text-cyan-400 font-semibold flex items-center gap-1 hover:underline"
-                        >
-                          <ExternalLink size={12} /> Ver Maps
-                        </a>
-                      )}
-                    </div>
+                    {isRestockMode ? (
+                      <div className="text-[11px] sm:text-xs text-indigo-700 dark:text-indigo-300 mt-0.5 font-medium">
+                        Puedes agregar o quitar ítems si ya no hay en almacén. Se confirma recién cuando llegue físicamente a la tienda.
+                      </div>
+                    ) : (
+                      <div className="flex gap-2.5 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5 flex-wrap">
+                        {selectedCustomer.phone && (
+                          <span className="flex items-center gap-1">
+                            <Phone size={12} className="text-emerald-500" /> {selectedCustomer.phone}
+                          </span>
+                        )}
+                        {selectedCustomer.address && (
+                          <span className="flex items-center gap-1 truncate max-w-[200px] sm:max-w-none">
+                            <MapPin size={12} className="text-cyan-500 shrink-0" /> <span className="truncate">{selectedCustomer.address}</span>
+                          </span>
+                        )}
+                        {(selectedCustomer.store_location_url || deliveryLocationUrl) && (
+                          <a 
+                            href={deliveryLocationUrl || selectedCustomer.store_location_url} 
+                            target="_blank" 
+                            rel="noreferrer" 
+                            className="text-cyan-600 dark:text-cyan-400 font-semibold flex items-center gap-1 hover:underline"
+                          >
+                            <ExternalLink size={12} /> Ver Maps
+                          </a>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (items.some(i => i.product_id) && !window.confirm('¿Deseas seleccionar otro cliente para esta nota?')) {
-                      return;
-                    }
-                    setSelectedCustomer(null);
-                  }}
-                  className="px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shrink-0 shadow-xs"
-                  title="Cambiar cliente para esta nota"
-                >
-                  <RefreshCw size={12} />
-                  <span>Cambiar Cliente</span>
-                </button>
+                {!noteToEdit && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (items.some(i => i.product_id) && !window.confirm('¿Deseas volver al paso anterior?')) {
+                        return;
+                      }
+                      setIsRestockMode(false);
+                      setSelectedCustomer(null);
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shrink-0 shadow-xs"
+                    title="Cambiar tipo o cliente"
+                  >
+                    <RefreshCw size={12} />
+                    <span>{isRestockMode ? 'Cambiar a Venta' : 'Cambiar Cliente'}</span>
+                  </button>
+                )}
               </div>
 
               {/* General Note Logistics & Dates Bar */}
@@ -1279,7 +1530,9 @@ export default function NewSalesNoteModal({
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3.5">
                   {/* Encargado / Vendedor */}
                   <div className="col-span-2 sm:col-span-1">
-                    <label className="form-label text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">Vendedor / Encargado</label>
+                    <label className="form-label text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
+                      {isRestockMode ? 'Solicitado por (Tienda)' : 'Vendedor / Encargado'}
+                    </label>
                     <select 
                       className="form-select text-xs font-bold h-10 w-full" 
                       style={{ padding: '6px 12px', lineHeight: '1.3' }}
@@ -1298,7 +1551,9 @@ export default function NewSalesNoteModal({
 
                   {/* Fecha Emisión */}
                   <div>
-                    <label className="form-label text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">Fecha de Venta</label>
+                    <label className="form-label text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
+                      {isRestockMode ? 'Fecha del Pedido' : 'Fecha de Venta'}
+                    </label>
                     <input 
                       type="date" 
                       className="form-input text-xs font-bold h-10 w-full" 
@@ -1309,16 +1564,33 @@ export default function NewSalesNoteModal({
                     />
                   </div>
 
-                  {/* Fecha Límite de Pago */}
+                  {/* Fecha Límite de Pago o Turno de Reposición */}
                   <div>
-                    <label className="form-label text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">Vencimiento (Crédito)</label>
-                    <input 
-                      type="date" 
-                      className="form-input text-xs font-bold h-10 w-full" 
-                      style={{ padding: '6px 10px', lineHeight: '1.3' }}
-                      value={dueDate} 
-                      onChange={e => setDueDate(e.target.value)}
-                    />
+                    {isRestockMode ? (
+                      <>
+                        <label className="form-label text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">Turno de Envío</label>
+                        <select
+                          className="form-select text-xs font-bold h-10 w-full"
+                          style={{ padding: '6px 12px', lineHeight: '1.3' }}
+                          value={restockShift}
+                          onChange={e => setRestockShift(e.target.value)}
+                        >
+                          <option value="MAÑANA">Turno Mañana</option>
+                          <option value="TARDE">Turno Tarde</option>
+                        </select>
+                      </>
+                    ) : (
+                      <>
+                        <label className="form-label text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">Vencimiento (Crédito)</label>
+                        <input 
+                          type="date" 
+                          className="form-input text-xs font-bold h-10 w-full" 
+                          style={{ padding: '6px 10px', lineHeight: '1.3' }}
+                          value={dueDate} 
+                          onChange={e => setDueDate(e.target.value)}
+                        />
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1349,17 +1621,25 @@ export default function NewSalesNoteModal({
                 const rowSubtotal = isBox 
                   ? (parseInt(it.boxes_count || 0, 10) * parseInt(it.units_per_box || 1, 10) * (parseFloat(it.unit_price) || 0))
                   : (parseInt(it.quantity || 0, 10) * (parseFloat(it.unit_price) || 0));
+                const rowShortage = !isRestockMode && it.product_id ? shortageByProductId[it.product_id] : null;
+                const displayStock = it.product_id && liveStockOverrides[it.product_id] !== undefined
+                  ? Number(liveStockOverrides[it.product_id])
+                  : Number(it.stock_now || 0);
 
                 return (
                   <div 
                     key={it.id} 
-                    className="rounded-xl border border-slate-200 dark:border-slate-700/80 p-3 sm:p-3.5 bg-white dark:bg-slate-800/80 shadow-xs flex flex-col lg:flex-row lg:items-center gap-3 transition-colors"
+                    className={`rounded-xl border p-3 sm:p-3.5 bg-white dark:bg-slate-800/80 shadow-xs flex flex-col lg:flex-row lg:items-center gap-3 transition-colors ${
+                      rowShortage
+                        ? 'border-rose-400 dark:border-rose-500/70 bg-rose-50/30 dark:bg-rose-950/15'
+                        : 'border-slate-200 dark:border-slate-700/80'
+                    }`}
                   >
                     {/* 1. Producto (Buscador Combobox) */}
                     <div className="flex-1 lg:flex-[2.5] min-w-0">
                       <div className="flex items-center justify-between mb-1 lg:mb-0.5">
                         <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                          #{idx + 1} Producto ({it.stock_now ? `Stock: ${it.stock_now}` : 'Buscador'}) *
+                          #{idx + 1} Producto ({it.product_id ? `Stock: ${Math.max(0, displayStock)} u.` : 'Buscador'}) *
                         </label>
                         {/* Mobile delete button placed conveniently in top right */}
                         <button 
@@ -1375,9 +1655,60 @@ export default function NewSalesNoteModal({
                       <ProductSearchCombobox 
                         products={products}
                         item={it}
+                        liveStockOverrides={liveStockOverrides}
                         onSelectProduct={(p) => handleSelectProduct(it.id, p)}
                         onClearProduct={() => handleClearProduct(it.id)}
                       />
+
+                      {/* Inline Stock Shortage Alert + Quick Stock-In for Admin/Warehouse */}
+                      {rowShortage && (
+                        <div className="mt-2 p-2 rounded-xl bg-rose-50 dark:bg-rose-500/15 border border-rose-200 dark:border-rose-500/40 space-y-1.5">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <span className="text-[11px] font-extrabold text-rose-700 dark:text-rose-300 flex items-center gap-1">
+                              <AlertCircle size={12} className="shrink-0" />
+                              <span>Stock insuficiente: pides {rowShortage.requested} u., disp. {rowShortage.available} u.</span>
+                            </span>
+                            {canQuickStockIn && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const suggestedBoxes = Math.max(1, Math.ceil(rowShortage.missing / Math.max(1, rowShortage.units_per_box)));
+                                  setQuickStockBoxes(String(suggestedBoxes));
+                                  setQuickStockRowId(prev => prev === it.id ? null : it.id);
+                                }}
+                                className="px-2 py-0.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-extrabold inline-flex items-center gap-1 cursor-pointer shrink-0"
+                              >
+                                <Plus size={11} />
+                                <span>Ingreso Rápido</span>
+                              </button>
+                            )}
+                          </div>
+
+                          {canQuickStockIn && quickStockRowId === it.id && (
+                            <div className="flex items-center gap-1.5 pt-1 border-t border-rose-200/70 dark:border-rose-500/30">
+                              <input
+                                type="number"
+                                min="1"
+                                value={quickStockBoxes}
+                                onChange={e => setQuickStockBoxes(e.target.value)}
+                                className="form-input h-8 w-20 text-xs font-mono font-black text-center"
+                                placeholder="Cajas"
+                              />
+                              <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300">
+                                cj ({(parseInt(quickStockBoxes || 0, 10) * Math.max(1, parseInt(it.units_per_box || 1, 10)))} u.)
+                              </span>
+                              <button
+                                type="button"
+                                disabled={isSavingQuickStock}
+                                onClick={() => handleQuickStockIn(it)}
+                                className="ml-auto px-2.5 h-8 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-extrabold cursor-pointer"
+                              >
+                                {isSavingQuickStock ? 'Sumando...' : 'Cargar Stock'}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {/* Mobile Grid for Quantities & Mode (On Desktop it flows inline) */}
@@ -1447,7 +1778,8 @@ export default function NewSalesNoteModal({
                         </div>
                       )}
 
-                      {/* 4. Precio Unitario & Quick Chips */}
+                      {/* 4. Precio Unitario & Quick Chips (Oculto en Reposición interna) */}
+                      {!isRestockMode && (
                       <div className="col-span-2 sm:col-span-1 lg:w-44">
                         <div className="flex justify-between items-center mb-1">
                           <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
@@ -1532,6 +1864,7 @@ export default function NewSalesNoteModal({
                           )}
                         </div>
                       </div>
+                      )}
                     </div>
 
                     {/* 5. Alistar en & Subtotal */}
@@ -1553,18 +1886,36 @@ export default function NewSalesNoteModal({
                         </select>
                       </div>
 
-                      {/* Subtotal */}
+                      {/* Subtotal (En reposición muestra total unidades/cajas, sin Bs) */}
                       <div className="text-right lg:w-28 shrink-0">
-                        <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
-                          Subtotal
-                        </label>
-                        <div className="text-sm sm:text-base font-black text-emerald-600 dark:text-emerald-400 font-mono">
-                          Bs {rowSubtotal.toFixed(2)}
-                        </div>
-                        {isBox && (
-                          <span className="text-[10px] text-slate-400 block">
-                            {(parseInt(it.boxes_count || 0, 10) * parseInt(it.units_per_box || 1, 10))} u.
-                          </span>
+                        {isRestockMode ? (
+                          <>
+                            <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                              Cantidad
+                            </label>
+                            <div className="text-sm sm:text-base font-black text-indigo-600 dark:text-indigo-400 font-mono">
+                              {isBox ? `${parseInt(it.boxes_count || 0, 10)} cj` : `${parseInt(it.quantity || 0, 10)} u.`}
+                            </div>
+                            {isBox && (
+                              <span className="text-[10px] text-slate-400 block">
+                                {(parseInt(it.boxes_count || 0, 10) * parseInt(it.units_per_box || 1, 10))} u.
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                              Subtotal
+                            </label>
+                            <div className="text-sm sm:text-base font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                              Bs {rowSubtotal.toFixed(2)}
+                            </div>
+                            {isBox && (
+                              <span className="text-[10px] text-slate-400 block">
+                                {(parseInt(it.boxes_count || 0, 10) * parseInt(it.units_per_box || 1, 10))} u.
+                              </span>
+                            )}
+                          </>
                         )}
                       </div>
 
@@ -1616,7 +1967,62 @@ export default function NewSalesNoteModal({
             </div>
           </div>
 
-          {/* Section 3: Payments / Abonos & Liquidation */}
+          {/* Section 3: Restock Summary OR Payments / Abonos & Liquidation */}
+          {isRestockMode ? (
+            <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-4 mb-4">
+              <div className="bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 rounded-2xl p-4 sm:p-5 flex flex-col gap-3 shadow-xs">
+                <div className="flex items-center gap-2">
+                  <Store size={17} className="text-indigo-600 dark:text-indigo-400" />
+                  <span className="text-xs sm:text-sm font-black text-indigo-700 dark:text-indigo-300 uppercase tracking-wide">
+                    3. Notas e Indicaciones para Almacén
+                  </span>
+                </div>
+                <div>
+                  <label className="form-label text-[11px] mb-1">Observaciones / Urgencia</label>
+                  <input
+                    type="text"
+                    className="form-input text-xs h-10 w-full"
+                    placeholder="Ej. Mandar temprano, prioridad taladros y discos..."
+                    value={notes}
+                    onChange={e => setNotes(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="form-label text-[11px] mb-1">Sucursal / Tienda Destino</label>
+                  <input
+                    type="text"
+                    className="form-input text-xs h-10 w-full"
+                    placeholder="TIENDA CENTRAL"
+                    value={destination}
+                    onChange={e => setDestination(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-500/40 rounded-2xl p-4 sm:p-5 flex flex-col justify-between shadow-xs">
+                <div>
+                  <span className="text-xs font-black text-indigo-700 dark:text-indigo-300 uppercase tracking-wider block mb-3">
+                    Resumen de Reposición a Tienda
+                  </span>
+                  <div className="flex justify-between py-2 border-b border-indigo-200/60 dark:border-indigo-500/20 text-xs sm:text-sm">
+                    <span className="text-slate-600 dark:text-slate-300">Ítems solicitados:</span>
+                    <span className="font-black text-slate-900 dark:text-white">{items.filter(it => it.sku || it.description).length}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-indigo-200/60 dark:border-indigo-500/20 text-xs sm:text-sm">
+                    <span className="text-slate-600 dark:text-slate-300">Total Cajas:</span>
+                    <span className="font-black font-mono text-indigo-700 dark:text-indigo-300 text-base">{totalBoxes} cajas</span>
+                  </div>
+                  <div className="flex justify-between py-2 text-xs sm:text-sm">
+                    <span className="text-slate-600 dark:text-slate-300">Total Unidades:</span>
+                    <span className="font-black font-mono text-slate-900 dark:text-white">{totalUnits} u.</span>
+                  </div>
+                </div>
+                <div className="mt-3 p-2.5 rounded-xl text-center font-black text-[11px] sm:text-xs tracking-wider uppercase bg-indigo-600 text-white">
+                  ESTADO: EN CURSO (SIN COBRO • EDITABLE HASTA LLEGADA)
+                </div>
+              </div>
+            </div>
+          ) : (
           <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-4 mb-5">
             {/* Left: Abonos a Cuenta & Observaciones */}
             <div className="bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 rounded-2xl p-4 sm:p-5 flex flex-col gap-4 shadow-xs">
@@ -2059,6 +2465,45 @@ export default function NewSalesNoteModal({
               </div>
             </div>
           </div>
+          )}
+
+          {/* Smart Stock Validation Control Box (Option 2: Controlled Newly-Arrived Override) */}
+          {!isRestockMode && stockShortages.length > 0 && (
+            <div className="bg-amber-50/90 dark:bg-amber-950/30 border-2 border-amber-400/80 dark:border-amber-500/50 rounded-2xl p-3.5 sm:p-4 space-y-2.5">
+              <div className="flex items-start gap-2 text-amber-900 dark:text-amber-200">
+                <AlertCircle size={18} className="text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <div className="text-xs sm:text-sm font-black">
+                    Control de Stock: {stockShortages.length} producto(s) superan el inventario disponible
+                  </div>
+                  <ul className="text-[11px] text-amber-800 dark:text-amber-300 mt-1 space-y-0.5 list-disc pl-4">
+                    {stockShortages.map(s => (
+                      <li key={s.product_id}>
+                        <strong>{s.sku}</strong> — Pides <strong>{s.requested} u.</strong>, disponible <strong>{s.available} u.</strong>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              <label className="flex items-start gap-2.5 p-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-amber-300 dark:border-amber-500/40 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={allowPendingArrival}
+                  onChange={e => setAllowPendingArrival(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 accent-amber-600 cursor-pointer shrink-0"
+                />
+                <div className="text-xs leading-snug">
+                  <span className="font-black text-slate-900 dark:text-white block">
+                    Mercadería recién llegada (Pendiente de carga en inventario)
+                  </span>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Autoriza emitir esta nota si el camión/lote ya llegó pero aún no se subió al stock. No generará números negativos y quedará marcado en auditoría para el administrador.
+                  </span>
+                </div>
+              </label>
+            </div>
+          )}
 
           {/* Error Banner */}
           {errorMessage && (
@@ -2081,14 +2526,20 @@ export default function NewSalesNoteModal({
             </button>
             <button 
               type="submit" 
-              className="btn btn-primary py-2.5 px-4 sm:px-6 font-black text-xs sm:text-sm shadow-md shadow-cyan-900/20 gap-2 justify-center flex-1 sm:flex-none rounded-xl" 
-              disabled={isSubmitting}
+              className={`py-2.5 px-4 sm:px-6 font-black text-xs sm:text-sm shadow-md gap-2 justify-center flex-1 sm:flex-none rounded-xl inline-flex items-center cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                isRestockMode
+                  ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-900/20'
+                  : 'btn btn-primary shadow-cyan-900/20'
+              }`}
+              disabled={isSubmitting || (!isRestockMode && stockShortages.length > 0 && !allowPendingArrival)}
             >
               <Save size={16} />
               <span>
                 {isSubmitting 
-                  ? (noteToEdit ? 'Actualizando...' : 'Emitiendo...') 
-                  : (noteToEdit ? 'Guardar Cambios en Nota' : 'Confirmar y Despachar Nota')}
+                  ? (noteToEdit ? 'Actualizando...' : 'Enviando...') 
+                  : isRestockMode
+                    ? (noteToEdit ? 'Guardar Cambios en Reposición' : 'Enviar Pedido a Almacén')
+                    : (noteToEdit ? 'Guardar Cambios en Nota' : 'Confirmar y Despachar Nota')}
               </span>
             </button>
           </div>

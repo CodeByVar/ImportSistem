@@ -12,7 +12,8 @@ import {
   Layers,
   Tag,
   Building2,
-  FileText
+  FileText,
+  Edit3
 } from 'lucide-react';
 import { formatCurrency, formatNumber, formatPercent } from '../utils/formatters';
 
@@ -461,6 +462,17 @@ export default function InventoryTable({
                             title="Registrar Venta / Salida"
                           >
                             <ArrowUpRight size={13} color="#38bdf8" />
+                          </button>
+                        )}
+                        {/* Editar Producto: solo para Admin / Super Admin */}
+                        {['SUPER_ADMIN', 'ADMIN'].includes(userRole) && onEditProduct && (
+                          <button
+                            onClick={() => onEditProduct(p)}
+                            className="btn btn-secondary"
+                            style={{ padding: '5px 7px', borderRadius: '6px' }}
+                            title="Editar precios, empaque o datos del producto"
+                          >
+                            <Edit3 size={13} color="#f59e0b" />
                           </button>
                         )}
                       </div>

@@ -13,6 +13,7 @@ import {
   Sliders,
   FileText
 } from 'lucide-react';
+import { RiveroIconSVG } from './BrandLogo';
 
 export default function PrintSalesNoteModal({ 
   isOpen, 
@@ -25,6 +26,8 @@ export default function PrintSalesNoteModal({
 
   if (!isOpen || !note) return null;
 
+  const isRestock = note.note_type === 'REPOSICION_TIENDA' || String(note.note_code || '').startsWith('REP-');
+
   const handlePrint = () => {
     window.print();
   };
@@ -32,6 +35,32 @@ export default function PrintSalesNoteModal({
   const handleWhatsApp = () => {
     const phone = (note.customer_phone || '').replace(/\D/g, '');
     const cleanPhone = phone.startsWith('591') ? phone : `591${phone}`;
+
+    if (isRestock) {
+      const restockItemsText = (note.items || []).map((it, idx) => {
+        const modeText = it.sale_mode === 'CAJA' ? `${it.boxes_count} cjs (${it.units_per_box} u/cj)` : `${it.quantity} unid`;
+        const alistar = it.warehouse_source ? ` [Alistar: ${it.warehouse_source}]` : '';
+        return `${idx + 1}. *${it.description}* (${it.sku}): *${modeText}*${alistar}`;
+      }).join('\n');
+
+      const restockMsg = `*IMPORTADORA RIVERO*
+*GUÍA DE REPOSICIÓN A TIENDA: ${note.note_code}*
+---------------------------------------
+*Destino:* ${note.delivery_destination || 'TIENDA CENTRAL'}
+*Fecha:* ${note.date}
+*Solicitado por:* ${note.seller_name || 'TIENDA'}
+*Estado:* ${note.status === 'RECIBIDO' ? 'RECIBIDO EN TIENDA' : 'EN CURSO (Editable)'}
+
+*MERCADERÍA SOLICITADA A ALMACÉN:*
+${restockItemsText}
+
+---------------------------------------
+*Total Cajas:* ${note.total_boxes || 0} cajas (${note.total_units || 0} unidades)
+${note.notes ? `*Observaciones:* ${note.notes}\n` : ''}_Nota interna de traspaso Almacén -> Tienda (Sin cobro)._`;
+
+      window.open(`https://wa.me/?text=${encodeURIComponent(restockMsg)}`, '_blank');
+      return;
+    }
 
     let itemsText = (note.items || []).map((it, idx) => {
       const modeText = it.sale_mode === 'CAJA' ? `${it.boxes_count} cjs (${it.units_per_box} u/cj)` : `${it.quantity} unid`;
@@ -255,50 +284,48 @@ _¡Gracias por su preferencia! Importadora Rivero - Simplificamos tu esfuerzo._`
             className="printable-document"
             style={getContainerStyle()}
           >
-            {/* Header Banner */}
+            {/* Header Banner - Identidad Visual Importadora Rivero */}
             <div style={{
-              background: '#1e293b',
+              background: '#0D0D0D',
               color: '#ffffff',
               padding: '12px 18px',
-              borderRadius: '6px',
+              borderRadius: '8px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               marginBottom: '10px',
-              border: '2px solid #0f172a'
+              border: '2px solid #0D0D0D'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                {/* Stylized Logo Icon */}
+                {/* Official Logo Icon (R con flecha ascendente) */}
                 <div style={{
-                  width: '42px',
-                  height: '42px',
-                  background: 'linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)',
-                  borderRadius: '8px',
+                  width: '44px',
+                  height: '44px',
+                  background: '#1A1A1A',
+                  border: '1.5px solid rgba(255, 140, 0, 0.45)',
+                  borderRadius: '10px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontWeight: 900,
-                  fontSize: '1.6rem',
-                  color: '#ffffff',
-                  boxShadow: '0 4px 10px rgba(0,0,0,0.3)'
+                  boxShadow: '0 4px 10px rgba(0,0,0,0.35)'
                 }}>
-                  R
+                  <RiveroIconSVG className="w-8 h-8" />
                 </div>
                 <div>
-                  <h1 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 900, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#fbbf24' }}>
+                  <h1 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 900, letterSpacing: '0.05em', textTransform: 'uppercase', color: '#FFC107', fontFamily: "'Montserrat', sans-serif" }}>
                     IMPORTADORA RIVERO
                   </h1>
-                  <span style={{ fontSize: '0.74rem', color: '#cbd5e1', letterSpacing: '0.05em' }}>
-                    simplificamos tu esfuerzo • Ventas por Mayor y Menor
+                  <span style={{ fontSize: '0.74rem', color: '#FFE082', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700 }}>
+                    SIMPLIFICAMOS TU ESFUERZO • VENTAS POR MAYOR Y MENOR
                   </span>
                 </div>
               </div>
 
               <div style={{ textAlign: 'right' }}>
                 <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: '#94a3b8', display: 'block' }}>
-                  NOTA DE DESPACHO
+                  {isRestock ? 'GUÍA DE REPOSICIÓN A TIENDA' : 'NOTA DE DESPACHO'}
                 </span>
-                <span style={{ fontSize: '1.4rem', fontWeight: 900, color: '#38bdf8', fontFamily: 'monospace' }}>
+                <span style={{ fontSize: '1.4rem', fontWeight: 900, color: isRestock ? '#a5b4fc' : '#38bdf8', fontFamily: 'monospace' }}>
                   {note.note_code}
                 </span>
               </div>

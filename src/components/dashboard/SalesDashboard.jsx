@@ -15,13 +15,16 @@ import {
   Pencil,
   Printer,
   MapPin,
-  User
+  User,
+  Store,
+  PackageCheck
 } from 'lucide-react';
 import { formatNumber } from '../../utils/formatters';
 
 export default function SalesDashboard({ 
   products = [], 
   onOpenNewNote, 
+  onOpenNewRestock,
   onOpenEditNote,
   onOpenPrintNote,
   onOpenAddPayment,
@@ -41,8 +44,9 @@ export default function SalesDashboard({
     }
   });
   const [loading, setLoading] = useState(true);
-  const [notesViewMode, setNotesViewMode] = useState('DEBT'); // 'DEBT' (Notas con Deuda) | 'ALL' (Todas las Notas de Clientes)
+  const [notesViewMode, setNotesViewMode] = useState('DEBT'); // 'DEBT' | 'RESTOCK' | 'ALL'
   const [noteSearch, setNoteSearch] = useState('');
+  const [localRefresh, setLocalRefresh] = useState(0);
   const notesSectionRef = useRef(null);
 
   // Fetch all sales notes and commercial KPIs
@@ -51,7 +55,7 @@ export default function SalesDashboard({
     async function loadSales() {
       setLoading(true);
       try {
-        const res = await fetch('/api/sales-notes?limit=200').then(r => r.json());
+        const res = await fetch('/api/sales-notes?limit=250').then(r => r.json());
         if (res.success && isMounted) {
           setSalesData({
             notes: res.data || [],
@@ -72,20 +76,38 @@ export default function SalesDashboard({
     }
     loadSales();
     return () => { isMounted = false; };
-  }, [refreshTrigger]);
+  }, [refreshTrigger, localRefresh]);
 
-  // All notes with active debt (balance_amount > 0 and not cancelled)
-  const debtNotes = useMemo(() => {
+  // Separate real customer sales from internal store restock orders
+  const salesOnlyNotes = useMemo(() => {
     return (salesData.notes || []).filter(
-      n => Number(n.balance_amount) > 0 && n.status !== 'ANULADO'
+      n => n.note_type !== 'REPOSICION_TIENDA' && n.status !== 'ANULADO'
     );
   }, [salesData.notes]);
 
-  // Filtered notes according to active tab ('DEBT' vs 'ALL') and search query
+  const restockNotes = useMemo(() => {
+    return (salesData.notes || []).filter(
+      n => n.note_type === 'REPOSICION_TIENDA' && n.status !== 'ANULADO'
+    );
+  }, [salesData.notes]);
+
+  const activeRestocksCount = useMemo(() => {
+    return restockNotes.filter(n => n.status !== 'RECIBIDO' && n.delivery_status !== 'ENTREGADO').length;
+  }, [restockNotes]);
+
+  // All customer notes with active debt (excludes internal store restocks)
+  const debtNotes = useMemo(() => {
+    return salesOnlyNotes.filter(n => Number(n.balance_amount) > 0);
+  }, [salesOnlyNotes]);
+
+  // Filtered notes according to active tab ('DEBT' | 'RESTOCK' | 'ALL') and search query
   const displayedNotes = useMemo(() => {
-    const baseList = notesViewMode === 'DEBT'
-      ? debtNotes
-      : (salesData.notes || []).filter(n => n.status !== 'ANULADO');
+    const baseList =
+      notesViewMode === 'DEBT'
+        ? debtNotes
+        : notesViewMode === 'RESTOCK'
+          ? restockNotes
+          : salesOnlyNotes;
 
     const q = noteSearch.trim().toLowerCase();
     if (!q) return baseList;
@@ -94,9 +116,31 @@ export default function SalesDashboard({
       (n.customer_name || '').toLowerCase().includes(q) ||
       (n.customer_phone || '').toLowerCase().includes(q) ||
       (n.seller_name || '').toLowerCase().includes(q) ||
-      (n.delivery_destination || '').toLowerCase().includes(q)
+      (n.delivery_destination || '').toLowerCase().includes(q) ||
+      (n.notes || '').toLowerCase().includes(q)
     );
-  }, [notesViewMode, debtNotes, salesData.notes, noteSearch]);
+  }, [notesViewMode, debtNotes, restockNotes, salesOnlyNotes, noteSearch]);
+
+  const handleConfirmRestockArrival = async (note) => {
+    const ok = window.confirm(
+      `¿Confirmar que el pedido ${note.note_code} (${note.total_boxes || 0} cajas / ${note.total_units || 0} u.) ya llegó físicamente a la Tienda?`
+    );
+    if (!ok) return;
+    try {
+      const res = await fetch(`/api/sales-notes/${note.id}/confirm-restock`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmed_by: currentUser?.name || 'TIENDA' })
+      }).then(r => r.json());
+      if (res.success) {
+        setLocalRefresh(prev => prev + 1);
+      } else {
+        alert(res.error || 'No se pudo confirmar la llegada a tienda.');
+      }
+    } catch (err) {
+      alert('Error de conexión: ' + err.message);
+    }
+  };
 
   // Helper to fetch full note details and open Edit or Print modal
   const handleInspectNote = async (noteId, mode = 'print') => {
@@ -287,6 +331,27 @@ export default function SalesDashboard({
           <ArrowRight size={17} className="shrink-0" />
         </button>
 
+        {onOpenNewRestock && (
+          <button
+            type="button"
+            onClick={onOpenNewRestock}
+            className="p-3.5 sm:p-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-left flex items-center justify-between transition-all cursor-pointer shadow-md shadow-indigo-600/20"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                <Store size={19} />
+              </div>
+              <div className="min-w-0">
+                <div className="text-sm font-black truncate">Pedir a Almacén (Tienda)</div>
+                <div className="text-[11px] text-white/85 truncate">
+                  Reposición diaria • {activeRestocksCount} en curso
+                </div>
+              </div>
+            </div>
+            <ArrowRight size={17} className="shrink-0" />
+          </button>
+        )}
+
         <button
           type="button"
           onClick={() => scrollToNotesSection('DEBT')}
@@ -356,44 +421,64 @@ export default function SalesDashboard({
           {/* Header & Mode Switcher Tabs */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
             <div className="flex items-center gap-2">
-              <FileText size={19} className="text-orange-500 shrink-0" />
+              {notesViewMode === 'RESTOCK' ? (
+                <Store size={19} className="text-indigo-600 shrink-0" />
+              ) : (
+                <FileText size={19} className="text-orange-500 shrink-0" />
+              )}
               <div>
                 <h3 className="font-black text-slate-900 dark:text-white text-sm sm:text-base m-0">
                   {notesViewMode === 'DEBT' 
                     ? `Notas con Deuda Pendiente (${debtNotes.length})` 
-                    : `Todas las Notas de Clientes (${salesData.notes.length})`}
+                    : notesViewMode === 'RESTOCK'
+                      ? `Reposiciones de Almacén → Tienda (${restockNotes.length})`
+                      : `Todas las Notas de Clientes (${salesOnlyNotes.length})`}
                 </h3>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 m-0">
-                  Registra pagos/abonos en tienda, edita pedidos o revisa el comprobante
+                  {notesViewMode === 'RESTOCK'
+                    ? 'Pedidos diarios en curso: edita ítems si faltan y confirma recién al llegar a tienda'
+                    : 'Registra pagos/abonos en tienda, edita pedidos o revisa el comprobante'}
                 </p>
               </div>
             </div>
 
-            {/* Selector Pestañas: Notas con Deuda vs Todas las Notas */}
-            <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl self-start sm:self-auto w-full sm:w-auto">
+            {/* Selector Pestañas: Con Deuda | Reposición Tienda | Todas */}
+            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl self-start sm:self-auto w-full sm:w-auto flex-wrap">
               <button
                 type="button"
                 onClick={() => setNotesViewMode('DEBT')}
-                className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                className={`flex-1 sm:flex-none px-2.5 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer flex items-center justify-center gap-1 ${
                   notesViewMode === 'DEBT'
                     ? 'bg-rose-600 text-white shadow-xs'
                     : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 <AlertCircle size={13} />
-                <span>Notas con Deuda ({debtNotes.length})</span>
+                <span>Deudas ({debtNotes.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setNotesViewMode('RESTOCK')}
+                className={`flex-1 sm:flex-none px-2.5 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                  notesViewMode === 'RESTOCK'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <Store size={13} />
+                <span>Reposición ({restockNotes.length})</span>
               </button>
               <button
                 type="button"
                 onClick={() => setNotesViewMode('ALL')}
-                className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                className={`flex-1 sm:flex-none px-2.5 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer flex items-center justify-center gap-1 ${
                   notesViewMode === 'ALL'
                     ? 'bg-cyan-600 text-white shadow-xs'
                     : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 <FileText size={13} />
-                <span>Todas las Notas ({salesData.notes.length})</span>
+                <span>Todas ({salesOnlyNotes.length})</span>
               </button>
             </div>
           </div>
@@ -446,10 +531,92 @@ export default function SalesDashboard({
           ) : (
             <div className="space-y-2.5 max-h-[580px] overflow-y-auto pr-0.5">
               {displayedNotes.map((note) => {
+                const isRestock = note.note_type === 'REPOSICION_TIENDA';
+                const isRestockReceived = isRestock && (note.status === 'RECIBIDO' || note.delivery_status === 'ENTREGADO');
                 const balance = Number(note.balance_amount ?? 0);
                 const paid = Number(note.paid_amount ?? 0);
                 const total = Number(note.total_amount ?? 0);
                 const isPaid = balance <= 0 || note.status === 'PAGADO';
+
+                if (isRestock) {
+                  return (
+                    <div
+                      key={note.id}
+                      className={`p-3 sm:p-4 rounded-2xl border-2 transition-all flex flex-col gap-2.5 ${
+                        isRestockReceived
+                          ? 'bg-emerald-50/40 dark:bg-slate-800/60 border-emerald-300/70 dark:border-emerald-500/35'
+                          : 'bg-indigo-50/50 dark:bg-slate-800/90 border-indigo-300/80 dark:border-indigo-500/45'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono text-xs font-black px-2 py-0.5 rounded-md bg-indigo-600 text-white">
+                              {note.note_code}
+                            </span>
+                            <span className="text-sm sm:text-base font-black text-slate-900 dark:text-white truncate">
+                              {note.customer_name || 'REPOSICIÓN TIENDA'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2.5 flex-wrap text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                            <span>Fecha: <strong className="text-slate-700 dark:text-slate-200">{note.date}</strong></span>
+                            <span>• <strong className="text-indigo-700 dark:text-indigo-300">{note.total_boxes || 0} cajas ({note.total_units || 0} u.)</strong></span>
+                            <span className="inline-flex items-center gap-1"><User size={11} /> {note.seller_name || 'Tienda'}</span>
+                            {note.notes && <span className="italic truncate max-w-[240px]">• {note.notes}</span>}
+                          </div>
+                        </div>
+
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold border shrink-0 ${
+                          isRestockReceived
+                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/40'
+                            : 'bg-indigo-100 text-indigo-800 border-indigo-300 dark:bg-indigo-500/20 dark:text-indigo-300 dark:border-indigo-500/40'
+                        }`}>
+                          {isRestockReceived ? 'RECIBIDO EN TIENDA' : 'EN CURSO (EDITABLE)'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 flex-wrap pt-2 border-t border-slate-200/80 dark:border-slate-700/70">
+                        <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                          {isRestockReceived
+                            ? `Confirmado en tienda${note.restock_confirmed_by ? ` por ${note.restock_confirmed_by}` : ''}`
+                            : 'Puedes editar para quitar productos agotados o agregar cajas'}
+                        </div>
+
+                        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                          {!isRestockReceived && (
+                            <button
+                              type="button"
+                              onClick={() => handleConfirmRestockArrival(note)}
+                              className="py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold inline-flex items-center justify-center gap-1.5 shadow-sm cursor-pointer active:scale-95 transition-all"
+                              title="Confirmar llegada física a la tienda"
+                            >
+                              <PackageCheck size={14} />
+                              <span>Confirmar Llegada</span>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleInspectNote(note.id, 'edit')}
+                            className="py-2 px-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-500/15 dark:hover:bg-indigo-500/25 border border-indigo-200 dark:border-indigo-500/35 text-indigo-700 dark:text-indigo-300 text-xs font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all"
+                            title="Editar ítems del pedido de reposición"
+                          >
+                            <Pencil size={13} />
+                            <span>Editar</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleInspectNote(note.id, 'print')}
+                            className="py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all"
+                            title="Ver guía o enviar por WhatsApp"
+                          >
+                            <Printer size={13} />
+                            <span>Ver Guía</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
 
                 return (
                   <div

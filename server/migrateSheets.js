@@ -96,16 +96,14 @@ export function inferBrand(sheetName) {
 }
 
 /**
- * Migrate directly from an Excel Workbook (.xlsx) with multiple sheets
+ * Migrate directly from an XLSX Workbook object (multi-sheet: UYUS, KAMASA, TOTAL, etc.)
  */
-export function migrateFromExcelFile(filePath) {
-  console.log(`\n📦 Cargando archivo Excel multi-hoja: ${filePath}`);
-  if (!fs.existsSync(filePath)) {
-    throw new Error(`Archivo no encontrado: ${filePath}`);
-  }
+export function migrateFromWorkbook(wb, filename = 'GoogleDrive_Workbook.xlsx', { replaceCatalog = false } = {}) {
+  console.log(`📑 Hojas detectadas en "${filename}" (${wb.SheetNames.length}):`, wb.SheetNames.join(', '));
 
-  const wb = XLSX.readFile(filePath, { cellFormula: true, cellStyles: true, sheetStubs: true });
-  console.log(`📑 Hojas detectadas en el libro (${wb.SheetNames.length}):`, wb.SheetNames.join(', '));
+  if (replaceCatalog) {
+    db.prepare('DELETE FROM products').run();
+  }
 
   const findProductBySku = db.prepare('SELECT id, current_stock FROM products WHERE sku = ?');
   const insertProductStmt = db.prepare(`
@@ -311,14 +309,14 @@ export function migrateFromExcelFile(filePath) {
     db.prepare(`
       INSERT INTO import_history (filename, source_type, records_count)
       VALUES (?, 'Excel Completo Multi-Hoja', ?)
-    `).run(path.basename(filePath), totalCreated + totalUpdated);
+    `).run(path.basename(filename), totalCreated + totalUpdated);
   });
 
   transaction();
 
   const summary = {
     success: true,
-    filename: path.basename(filePath),
+    filename: path.basename(filename),
     totalSheets: wb.SheetNames.length,
     sheets: wb.SheetNames,
     createdCount: totalCreated,
@@ -335,6 +333,20 @@ export function migrateFromExcelFile(filePath) {
   console.log(`   - Capital inventario: $${totalCapitalGlobal.toLocaleString()} USD\n`);
 
   return summary;
+}
+
+export function migrateFromBuffer(buffer, filename = 'GoogleDrive_Workbook.xlsx', options = {}) {
+  const wb = XLSX.read(buffer, { type: 'buffer', cellFormula: true, cellStyles: true, sheetStubs: true });
+  return migrateFromWorkbook(wb, filename, options);
+}
+
+export function migrateFromExcelFile(filePath, options = {}) {
+  console.log(`\n📦 Cargando archivo Excel multi-hoja: ${filePath}`);
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`Archivo no encontrado: ${filePath}`);
+  }
+  const wb = XLSX.readFile(filePath, { cellFormula: true, cellStyles: true, sheetStubs: true });
+  return migrateFromWorkbook(wb, path.basename(filePath), options);
 }
 
 /**

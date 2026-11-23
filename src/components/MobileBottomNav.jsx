@@ -34,11 +34,11 @@ export default function MobileBottomNav({
             onClick={() => setActiveTab('notes')}
             className={`flex-1 min-w-0 flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer ${
               activeTab === 'notes'
-                ? 'text-cyan-600 dark:text-cyan-400 font-extrabold'
+                ? 'text-[#FF8C00] dark:text-[#FFC107] font-extrabold'
                 : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
             }`}
           >
-            <div className={`p-1 rounded-lg ${activeTab === 'notes' ? 'bg-cyan-50 dark:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400' : ''}`}>
+            <div className={`p-1 rounded-lg ${activeTab === 'notes' ? 'bg-[#FF8C00]/15 dark:bg-[#FF8C00]/20 text-[#FF8C00] dark:text-[#FFC107]' : ''}`}>
               <ClipboardList size={19} strokeWidth={activeTab === 'notes' ? 2.5 : 1.8} />
             </div>
             <span className="text-[10px] mt-0.5 tracking-tight font-bold truncate w-full text-center">Entregas</span>
@@ -52,18 +52,18 @@ export default function MobileBottomNav({
             onClick={() => setActiveTab('inventory')}
             className={`flex-1 min-w-0 flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer ${
               activeTab === 'inventory'
-                ? 'text-cyan-600 dark:text-cyan-400 font-extrabold'
+                ? 'text-[#FF8C00] dark:text-[#FFC107] font-extrabold'
                 : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
             }`}
           >
-            <div className={`p-1 rounded-lg ${activeTab === 'inventory' ? 'bg-cyan-50 dark:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400' : ''}`}>
+            <div className={`p-1 rounded-lg ${activeTab === 'inventory' ? 'bg-[#FF8C00]/15 dark:bg-[#FF8C00]/20 text-[#FF8C00] dark:text-[#FFC107]' : ''}`}>
               <Package size={19} strokeWidth={activeTab === 'inventory' ? 2.5 : 1.8} />
             </div>
             <span className="text-[10px] mt-0.5 tracking-tight font-bold truncate w-full text-center">Stock</span>
           </button>
         )}
 
-        {/* 3. Botón Central: NUEVA NOTA (Acción rápida móvil sin doble +) */}
+        {/* 3. Botón Central: NUEVA NOTA (Paleta Oficial Naranja #FF8C00 -> Dorado #FFC107) */}
         {onOpenNewNote && (
           <button
             type="button"
@@ -71,10 +71,10 @@ export default function MobileBottomNav({
             className="flex-1 min-w-0 flex flex-col items-center justify-center -mt-4 group cursor-pointer"
             title="Emitir nueva nota de despacho o venta"
           >
-            <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-cyan-500 via-sky-500 to-emerald-500 text-white flex items-center justify-center shadow-[0_4px_18px_rgba(6,182,212,0.45)] active:scale-95 transition-transform border-2 border-white dark:border-slate-900">
+            <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-[#FF8C00] via-[#FFA000] to-[#FFC107] text-[#0D0D0D] flex items-center justify-center shadow-[0_4px_18px_rgba(255,140,0,0.48)] active:scale-95 transition-transform border-2 border-white dark:border-[#121212]">
               <Plus size={22} strokeWidth={3} />
             </div>
-            <span className="text-[10px] text-cyan-600 dark:text-cyan-300 font-black mt-0.5 truncate w-full text-center">Nueva Nota</span>
+            <span className="text-[10px] text-[#FF8C00] dark:text-[#FFC107] font-black mt-0.5 truncate w-full text-center">Nueva Nota</span>
           </button>
         )}
 

@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { migratePlaintextPins } from './security.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,8 +16,10 @@ if (!fs.existsSync(dataDir)) {
 const dbPath = path.join(dataDir, 'siscontrol.db');
 const db = new Database(dbPath);
 
-// Enable WAL mode for high concurrency & speed
+// Enable WAL mode, busy timeout & normal sync for safe multi-user concurrency
 db.pragma('journal_mode = WAL');
+db.pragma('busy_timeout = 5000');
+db.pragma('synchronous = NORMAL');
 db.pragma('foreign_keys = ON');
 
 export function initDatabase() {
@@ -270,15 +273,15 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
   `);
 
-  // Insertar Super Usuario inicial si la tabla está vacía
+  // Insertar Super Usuario inicial (ABEL) si la tabla está vacía
   const userCount = db.prepare('SELECT count(*) as c FROM users').get().c;
   if (userCount === 0) {
     db.prepare(`
       INSERT INTO users (name, username, pin_code, role, phone, avatar_color, status, notes)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      'Carlos Rivero V.',
-      'carlos',
+      'ABEL',
+      'abel',
       '1234',
       'SUPER_ADMIN',
       '+591 70000000',
@@ -286,15 +289,6 @@ export function initDatabase() {
       'ACTIVO',
       'Super Usuario Administrador Principal - Acceso total al sistema'
     );
-  }
-
-  // Insertar cliente inicial si la tabla está vacía
-  const customerCount = db.prepare('SELECT count(*) as c FROM customers').get().c;
-  if (customerCount === 0) {
-    db.prepare(`
-      INSERT INTO customers (code, name, phone, address, city, notes)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run('IR-EG', 'ERICK GARCIA', '68579599', 'MERCADO LA PAMPA', 'Cochabamba', 'Cliente recurrente - Mercado La Pampa');
   }
 
   // Migrate new columns if they do not exist
@@ -440,6 +434,9 @@ export function initDatabase() {
   addSnCol('delivery_status', "TEXT DEFAULT 'PENDIENTE'"); // 'PENDIENTE', 'EN PREPARACIÓN', 'ENTREGADO'
   addSnCol('stock_deducted', 'INTEGER DEFAULT 0'); // 1 si ya se descontó el stock al confirmar entrega
   addSnCol('delivered_at', 'TEXT'); // Fecha y hora de confirmación de entrega
+  addSnCol('note_type', "TEXT DEFAULT 'VENTA'"); // 'VENTA' | 'REPOSICION_TIENDA'
+  addSnCol('restock_confirmed_by', 'TEXT'); // Quién confirmó recepción física en tienda
+  addSnCol('pending_stock_arrival', 'INTEGER DEFAULT 0'); // 1 si se vendió mercadería recién llegada sin cargar aún a inventario
 
   // Migrate users columns for profile photo (avatar_url)
   const userCols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
@@ -448,6 +445,35 @@ export function initDatabase() {
       db.exec(`ALTER TABLE users ADD COLUMN avatar_url TEXT`);
     } catch (e) {}
   }
+
+  // Migrate expenses columns for user traceability
+  const expCols = db.prepare("PRAGMA table_info(expenses)").all().map(c => c.name);
+  if (!expCols.includes('registered_by')) {
+    try {
+      db.exec(`ALTER TABLE expenses ADD COLUMN registered_by TEXT`);
+    } catch (e) {}
+  }
+
+  // Create Security Audit Logs table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS security_audit_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      action TEXT NOT NULL,
+      actor_user_id INTEGER,
+      actor_username TEXT,
+      actor_role TEXT,
+      target TEXT,
+      ip_address TEXT,
+      details TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_audit_action ON security_audit_logs(action);
+    CREATE INDEX IF NOT EXISTS idx_audit_created ON security_audit_logs(created_at);
+  `);
+
+  // Automatically upgrade any legacy plaintext PINs to cryptographic scrypt hashes
+  migratePlaintextPins(db);
 
   console.log('✅ SISCONTROL SQLite Database initialized at:', dbPath);
 }

@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="riveroGrad" x1="0%" y1="50%" x2="100%" y2="50%">
+      <stop offset="0%" stop-color="#FF8C00" />
+      <stop offset="65%" stop-color="#FFB300" />
+      <stop offset="100%" stop-color="#FFD54F" />
+    </linearGradient>
+    <linearGradient id="bgDarkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#141414" />
+      <stop offset="100%" stop-color="#0D0D0D" />
+    </linearGradient>
+  </defs>
+  <!-- Ícono App (Oscuro) - Manual de Identidad Importadora Rivero -->
+  <rect width="512" height="512" rx="116" fill="url(#bgDarkGrad)" />
+  <rect x="12" y="12" width="488" height="488" rx="106" fill="none" stroke="#FF8C00" stroke-opacity="0.22" stroke-width="4" />
+  <!-- R estilizada con flecha diagonal ascendente -->
+  <path
+    fill="url(#riveroGrad)"
+    d="M 146 92
+       L 298 92
+       C 378 92 422 136 410 212
+       C 400 264 362 300 314 314
+       L 368 420
+       L 276 420
+       L 232 326
+       L 202 326
+       L 182 420
+       L 92 414
+       C 94 334 142 276 238 222
+       L 258 246
+       L 298 158
+       L 204 176
+       L 224 198
+       C 170 226 134 252 110 276
+       Z"
+  />
+</svg>

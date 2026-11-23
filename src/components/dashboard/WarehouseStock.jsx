@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import { Building2, ArrowRight, Layers } from 'lucide-react';
 
 export default function WarehouseStock({ 
-  totalStockValuationCostBob, 
+  totalStockValuationCostBob = 0, 
   categoriesDistribution = [], 
-  formatShortMoney, 
+  formatShortMoney = (v) => `Bs ${Number(v || 0).toFixed(0)}`, 
   onSelectTab 
 }) {
   const [hoveredCatId, setHoveredCatId] = useState(null);

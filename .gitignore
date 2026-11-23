@@ -30,6 +30,8 @@ dist-ssr
 !.env.example
 
 # Business Data & Databases (Security & Confidentiality)
+server/data/.jwt_secret
+server/data/backups/
 server/data/*.db
 server/data/*.db-*
 server/data/*.db-shm
@@ -45,6 +47,9 @@ server/data/*.backup*
 *.xlsx
 *.xls
 *.csv
+Logo import.png
+branding.jpg
+manual.jpg
 
 # Keep data folder structure
 !server/data/.gitkeep

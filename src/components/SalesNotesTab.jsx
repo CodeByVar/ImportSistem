@@ -36,6 +36,7 @@ function getActiveRoleFallback(currentUser) {
 
 export default function SalesNotesTab({
   onOpenNewNote,
+  onOpenNewRestock,
   onOpenEditNote,
   onOpenPrintNote,
   onOpenCustomers,
@@ -109,6 +110,7 @@ export default function SalesNotesTab({
         onOpenPrintNote={onOpenPrintNote} 
         onOpenEditNote={onOpenEditNote}
         onOpenNewNote={onOpenNewNote} 
+        onOpenNewRestock={onOpenNewRestock}
         onOpenAddPayment={onOpenAddPayment}
         onNavigateToContainers={onNavigateToContainers}
         onNavigateToWeekly={onNavigateToWeekly}

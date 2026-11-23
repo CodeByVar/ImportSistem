@@ -2,15 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import ModernSidebar from './components/ModernSidebar';
 import ModernHeader from './components/ModernHeader';
 import ModernDashboard from './components/ModernDashboard';
-import KpiCards from './components/KpiCards';
-import ChartsSection from './components/ChartsSection';
-import TopProductsSection from './components/TopProductsSection';
 import InventoryTable from './components/InventoryTable';
 import MovementsTable from './components/MovementsTable';
 import ContainersSection from './components/ContainersSection';
 import GoogleSheetsImporterModal from './components/GoogleSheetsImporterModal';
 import NewMovementModal from './components/NewMovementModal';
 import NewProductModal from './components/NewProductModal';
+import EditProductModal from './components/EditProductModal';
+import CashClosingModal from './components/CashClosingModal';
 import NewContainerModal from './components/NewContainerModal';
 import WeeklyDispatchesTable from './components/WeeklyDispatchesTable';
 import SalesNotesTab from './components/SalesNotesTab';
@@ -65,6 +64,8 @@ export default function App() {
   const [movementModalType, setMovementModalType] = useState('SALIDA');
   const [movementModalProduct, setMovementModalProduct] = useState(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [isCashClosingOpen, setIsCashClosingOpen] = useState(false);
   const [isContainerModalOpen, setIsContainerModalOpen] = useState(false);
   const [isBatchLotModalOpen, setIsBatchLotModalOpen] = useState(false);
   const [isPrelistModalOpen, setIsPrelistModalOpen] = useState(false);
@@ -72,6 +73,7 @@ export default function App() {
 
   // Sales Notes states
   const [isNewNoteModalOpen, setIsNewNoteModalOpen] = useState(false);
+  const [newNoteInitialType, setNewNoteInitialType] = useState('VENTA'); // 'VENTA' | 'REPOSICION_TIENDA'
   const [isPrintNoteModalOpen, setIsPrintNoteModalOpen] = useState(false);
   const [printNoteData, setPrintNoteData] = useState(null);
   const [isCustomersModalOpen, setIsCustomersModalOpen] = useState(false);
@@ -80,26 +82,27 @@ export default function App() {
   const [editNoteData, setEditNoteData] = useState(null);
   const [notesRefreshTrigger, setNotesRefreshTrigger] = useState(0);
 
-  // Authentication & Session State
+  // Authentication & Session State (requires signed JWT token)
   const [authSession, setAuthSession] = useState(() => {
     try {
       const saved = localStorage.getItem('siscontrol_auth_session');
-      return saved ? JSON.parse(saved) : null;
+      if (!saved) return null;
+      const parsed = JSON.parse(saved);
+      return parsed && parsed.token && parsed.user ? parsed : null;
     } catch (e) {
       return null;
     }
   });
 
-  // User & Roles states (Initialized from auth session or active user)
+  // User & Roles states (Initialized from authenticated session)
   const [currentUser, setCurrentUser] = useState(() => {
     try {
       const savedAuth = localStorage.getItem('siscontrol_auth_session');
       if (savedAuth) {
         const parsed = JSON.parse(savedAuth);
-        if (parsed && parsed.user) return parsed.user;
+        if (parsed && parsed.token && parsed.user) return parsed.user;
       }
-      const saved = localStorage.getItem('siscontrol_active_user');
-      return saved ? JSON.parse(saved) : null;
+      return null;
     } catch (e) {
       return null;
     }
@@ -115,12 +118,13 @@ export default function App() {
     setTimeout(() => setToastMessage(''), 4000);
   };
 
-  const handleLoginSuccess = (user) => {
-    const session = { user, loginAt: new Date().toISOString() };
-    setAuthSession(session);
-    setCurrentUser(user);
+  const handleLoginSuccess = (user, token) => {
+    const session = { user, token, loginAt: new Date().toISOString() };
+    // Persist token BEFORE updating state so immediate API requests attach Authorization header
     localStorage.setItem('siscontrol_auth_session', JSON.stringify(session));
     localStorage.setItem('siscontrol_active_user', JSON.stringify(user));
+    setAuthSession(session);
+    setCurrentUser(user);
     
     // Auto-redirigir a la pestaña por defecto del rol
     const perms = getPermissions(user.role);
@@ -129,10 +133,42 @@ export default function App() {
     showToast(`¡Sesión iniciada! Bienvenido, ${user.name}`);
   };
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     localStorage.removeItem('siscontrol_auth_session');
+    localStorage.removeItem('siscontrol_active_user');
     setAuthSession(null);
-  };
+    setCurrentUser(null);
+  }, []);
+
+  // Listen for global 401 session expiration events from authFetch
+  useEffect(() => {
+    const onExpired = () => {
+      handleLogout();
+    };
+    window.addEventListener('siscontrol:session-expired', onExpired);
+    return () => window.removeEventListener('siscontrol:session-expired', onExpired);
+  }, [handleLogout]);
+
+  // Verify token against backend and sync authoritative user role on load
+  useEffect(() => {
+    if (!authSession?.token) return;
+    let cancelled = false;
+    fetch('/api/auth/me')
+      .then(r => r.json())
+      .then(res => {
+        if (cancelled) return;
+        if (res.success && res.data) {
+          setCurrentUser(res.data);
+          const updatedSession = { ...authSession, user: res.data };
+          localStorage.setItem('siscontrol_auth_session', JSON.stringify(updatedSession));
+          localStorage.setItem('siscontrol_active_user', JSON.stringify(res.data));
+        }
+      })
+      .catch(() => {
+        // Network error — keep current local state until server responds
+      });
+    return () => { cancelled = true; };
+  }, [authSession?.token]);
 
   const toggleTheme = () => {
     const nextTheme = theme === 'dark' ? 'light' : 'dark';
@@ -141,8 +177,9 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', nextTheme);
   };
 
-  // Fetch all data
+  // Fetch all data (only when authenticated with a valid JWT token)
   const fetchData = useCallback(async () => {
+    if (!authSession?.token) return;
     setIsLoading(true);
     try {
       const [statsRes, chartsRes, prodsRes, movsRes, contsRes] = await Promise.all([
@@ -163,11 +200,13 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [timeRange]);
+  }, [timeRange, authSession?.token]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (authSession?.token) {
+      fetchData();
+    }
+  }, [fetchData, authSession?.token]);
 
   // Open movement modal — ENTRADA opens the Excel batch modal; SALIDA opens the single manual modal
   const handleOpenNewMovement = (type = 'SALIDA', product = null) => {
@@ -217,7 +256,7 @@ export default function App() {
   };
 
   return (
-    <div className="h-screen w-full bg-slate-100/70 dark:bg-slate-950 flex flex-row text-slate-900 dark:text-slate-100 transition-colors duration-200 antialiased overflow-hidden">
+    <div className="h-screen w-full bg-[#F8F8FA] dark:bg-[#121212] flex flex-row text-[#0D0D0D] dark:text-slate-100 transition-colors duration-200 antialiased overflow-hidden">
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 bg-emerald-600 text-white px-5 py-3 rounded-2xl shadow-xl flex items-center gap-2.5 font-bold text-sm animate-fade-in">
@@ -276,12 +315,13 @@ export default function App() {
               setIsNewNoteModalOpen(true);
             }}
             onOpenCustomers={() => setIsCustomersModalOpen(true)}
+            onOpenCashClosing={() => setIsCashClosingOpen(true)}
           />
         </div>
 
         {/* 3. SCROLLABLE MIDDLE CONTENT (SOLO ESTO SE MUEVE CON EL SCROLL - ESTILO DRIVE) */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden pt-1 pb-24 sm:pb-8 scroll-smooth">
-          <main className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl p-3 sm:p-7 lg:p-8 shadow-[0_10px_35px_rgba(0,0,0,0.04)] dark:shadow-[0_10px_35px_rgba(0,0,0,0.3)] border border-slate-200/80 dark:border-slate-800 transition-all mb-4">
+          <main className="bg-white dark:bg-[#1E1E1E] rounded-2xl sm:rounded-3xl p-3 sm:p-7 lg:p-8 shadow-[0_10px_35px_rgba(0,0,0,0.04)] dark:shadow-[0_10px_35px_rgba(0,0,0,0.45)] border border-slate-200/80 dark:border-[#2E2E2E] transition-all mb-4">
             {activeTab === 'dashboard' && (
               <ModernDashboard
                 stats={stats}
@@ -292,6 +332,12 @@ export default function App() {
                 onOpenNewMovement={handleOpenNewMovement}
                 onOpenNewNote={() => {
                   setEditNoteData(null);
+                  setNewNoteInitialType('VENTA');
+                  setIsNewNoteModalOpen(true);
+                }}
+                onOpenNewRestock={() => {
+                  setEditNoteData(null);
+                  setNewNoteInitialType('REPOSICION_TIENDA');
                   setIsNewNoteModalOpen(true);
                 }}
                 onOpenEditNote={(note) => {
@@ -319,6 +365,12 @@ export default function App() {
               <SalesNotesTab 
                 onOpenNewNote={() => {
                   setEditNoteData(null);
+                  setNewNoteInitialType('VENTA');
+                  setIsNewNoteModalOpen(true);
+                }}
+                onOpenNewRestock={() => {
+                  setEditNoteData(null);
+                  setNewNoteInitialType('REPOSICION_TIENDA');
                   setIsNewNoteModalOpen(true);
                 }}
                 onOpenEditNote={(note) => {
@@ -346,7 +398,7 @@ export default function App() {
                 products={products}
                 initialFilter={inventoryInitialFilter}
                 onOpenNewMovement={handleOpenNewMovement}
-                onEditProduct={() => {}}
+                onEditProduct={(product) => setEditingProduct(product)}
                 userRole={currentUser?.role || 'VENTAS'}
               />
             )}
@@ -482,13 +534,24 @@ export default function App() {
         onClose={() => {
           setIsNewNoteModalOpen(false);
           setEditNoteData(null);
+          setNewNoteInitialType('VENTA');
         }}
         noteToEdit={editNoteData}
+        initialNoteType={newNoteInitialType}
         products={products}
+        onStockQuickAdded={() => {
+          fetchData();
+          showToast('Ingreso rápido de stock cargado al inventario');
+        }}
         onNoteCreated={(newNote) => {
           fetchData();
           setNotesRefreshTrigger(prev => prev + 1);
-          showToast(`¡Nota de venta ${newNote.note_code || ''} emitida con éxito!`);
+          const isRestockCreated = newNote?.note_type === 'REPOSICION_TIENDA' || newNote?.noteType === 'REPOSICION_TIENDA';
+          showToast(
+            isRestockCreated
+              ? `Pedido de reposición ${newNote.note_code || ''} enviado a Almacén (En Curso y editable).`
+              : `¡Nota de venta ${newNote.note_code || ''} emitida con éxito!`
+          );
           if (newNote && newNote.items) {
             setPrintNoteData(newNote);
             setIsPrintNoteModalOpen(true);
@@ -552,16 +615,53 @@ export default function App() {
         isOpen={isUsersModalOpen}
         onClose={() => setIsUsersModalOpen(false)}
         currentUser={currentUser}
-        onSwitchUser={(user) => {
-          const session = { user, loginAt: new Date().toISOString() };
-          setAuthSession(session);
-          setCurrentUser(user);
-          localStorage.setItem('siscontrol_auth_session', JSON.stringify(session));
-          localStorage.setItem('siscontrol_active_user', JSON.stringify(user));
-          // Redirigir a la pestaña por defecto del nuevo rol
-          const perms = getPermissions(user.role);
-          setActiveTab(perms.defaultTab);
-          showToast(`Sesión cambiada a: ${user.name} (${user.role})`);
+        onSwitchUser={async (user) => {
+          try {
+            const res = await fetch('/api/users/impersonate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userId: user.id })
+            }).then(r => r.json());
+
+            if (!res.success || !res.token || !res.data) {
+              showToast(res.error || 'No se pudo cambiar de perfil');
+              return;
+            }
+
+            const session = { user: res.data, token: res.token, loginAt: new Date().toISOString() };
+            localStorage.setItem('siscontrol_auth_session', JSON.stringify(session));
+            localStorage.setItem('siscontrol_active_user', JSON.stringify(res.data));
+            setAuthSession(session);
+            setCurrentUser(res.data);
+            const perms = getPermissions(res.data.role);
+            setActiveTab(perms.defaultTab);
+            setIsUsersModalOpen(false);
+            showToast(`Sesión segura cambiada a: ${res.data.name} (${res.data.role})`);
+          } catch (err) {
+            showToast('Error cambiando de perfil: ' + err.message);
+          }
+        }}
+      />
+
+      {/* 10. Quick Product & Wholesale Pricing Editor (Admin / Super Admin) */}
+      <EditProductModal
+        isOpen={Boolean(editingProduct)}
+        product={editingProduct}
+        onClose={() => setEditingProduct(null)}
+        onProductUpdated={() => {
+          fetchData();
+          showToast('Producto y precios actualizados correctamente');
+        }}
+      />
+
+      {/* 11. Daily Cash Closing & Expenses (Cierre de Caja Diario + Caja Chica) */}
+      <CashClosingModal
+        isOpen={isCashClosingOpen}
+        onClose={() => setIsCashClosingOpen(false)}
+        currentUser={currentUser}
+        onDataChanged={() => {
+          fetchData();
+          setNotesRefreshTrigger(prev => prev + 1);
         }}
       />
     </div>

@@ -1,0 +1,26 @@
+{
+  "name": "SISCONTROL - Importadora Rivero",
+  "short_name": "SISCONTROL",
+  "description": "Sistema integral de control de inventario, ventas mayoristas, entregas diarias y cobranzas.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0D0D0D",
+  "theme_color": "#FF8C00",
+  "lang": "es-BO",
+  "icons": [
+    {
+      "src": "/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo-importadora-rivero.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
+

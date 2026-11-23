@@ -15,6 +15,7 @@ export default function ModernDashboard({
   containers = [],
   onOpenNewMovement, 
   onOpenNewNote, 
+  onOpenNewRestock,
   onOpenEditNote,
   onOpenPrintNote,
   onOpenAddPayment,
@@ -28,73 +29,6 @@ export default function ModernDashboard({
   const role = currentUser?.role || 'SUPER_ADMIN';
   const isSuperAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(role);
   const [adminViewMode, setAdminViewMode] = useState('EJECUTIVO'); // 'EJECUTIVO', 'VENTAS', 'ALMACEN'
-
-  // 1. Si es Vendedor o el Super Admin previsualiza Ventas
-  if (role === 'VENTAS' || (isSuperAdmin && adminViewMode === 'VENTAS')) {
-    return (
-      <div className="space-y-4">
-        {isSuperAdmin && (
-          <div className="flex items-center justify-between bg-orange-50 dark:bg-orange-950/40 p-3 rounded-2xl border border-orange-200 dark:border-orange-900/60 text-xs">
-            <div className="flex items-center gap-2 text-orange-800 dark:text-orange-300 font-bold">
-              <Eye size={15} />
-              <span>Modo Previsualización: Estás viendo el Dashboard exclusivo para <strong>Ventas</strong></span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setAdminViewMode('EJECUTIVO')}
-              className="px-3 py-1 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold cursor-pointer transition-colors"
-            >
-              Volver a Dashboard Ejecutivo
-            </button>
-          </div>
-        )}
-        <SalesDashboard
-          products={products}
-          onOpenNewNote={onOpenNewNote}
-          onOpenEditNote={onOpenEditNote}
-          onOpenPrintNote={onOpenPrintNote}
-          onOpenAddPayment={onOpenAddPayment}
-          onOpenCustomers={onOpenCustomers}
-          onSelectTab={onSelectTab}
-          refreshTrigger={refreshTrigger}
-          currentUser={currentUser}
-        />
-      </div>
-    );
-  }
-
-  // 2. Si es de Almacén o el Super Admin previsualiza Almacén
-  if (role === 'ALMACEN' || (isSuperAdmin && adminViewMode === 'ALMACEN')) {
-    return (
-      <div className="space-y-4">
-        {isSuperAdmin && (
-          <div className="flex items-center justify-between bg-indigo-50 dark:bg-indigo-950/40 p-3 rounded-2xl border border-indigo-200 dark:border-indigo-900/60 text-xs">
-            <div className="flex items-center gap-2 text-indigo-800 dark:text-indigo-300 font-bold">
-              <Eye size={15} />
-              <span>👑 Modo Previsualización: Estás viendo el Dashboard exclusivo para <strong>Almacén</strong></span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setAdminViewMode('EJECUTIVO')}
-              className="px-3 py-1 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold cursor-pointer transition-colors"
-            >
-              Volver a Dashboard Ejecutivo
-            </button>
-          </div>
-        )}
-        <WarehouseDashboard
-          products={products}
-          containers={containers}
-          onSelectTab={onSelectTab}
-          currentUser={currentUser}
-        />
-      </div>
-    );
-  }
-
-  // =========================================================================
-  // 3. DASHBOARD EJECUTIVO (SUPER_ADMIN / ADMIN)
-  // =========================================================================
   const [currency] = useState('BOB'); // 'BOB' (Bs)
   const [searchTerm, setSearchTerm] = useState('');
   const [movementFilter, setMovementFilter] = useState('ALL'); // 'ALL', 'SALIDA', 'ENTRADA'
@@ -281,9 +215,9 @@ export default function ModernDashboard({
   // Filtered movements for recent activity
   const filteredActivities = useMemo(() => {
     return activities.filter(a => {
-      const matchSearch = a.client.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          a.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          a.party.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchSearch = (a.client || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          (a.id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (a.party || '').toLowerCase().includes(searchTerm.toLowerCase());
       const matchType = movementFilter === 'ALL' || a.type === movementFilter;
       return matchSearch && matchType;
     });
@@ -306,6 +240,70 @@ export default function ModernDashboard({
       total_fob: 100000
     };
   }, [containers]);
+
+  // 1. Si es Vendedor o el Super Admin previsualiza Ventas
+  if (role === 'VENTAS' || (isSuperAdmin && adminViewMode === 'VENTAS')) {
+    return (
+      <div className="space-y-4">
+        {isSuperAdmin && (
+          <div className="flex items-center justify-between bg-orange-50 dark:bg-orange-950/40 p-3 rounded-2xl border border-orange-200 dark:border-orange-900/60 text-xs">
+            <div className="flex items-center gap-2 text-orange-800 dark:text-orange-300 font-bold">
+              <Eye size={15} />
+              <span>Modo Previsualización: Estás viendo el Dashboard exclusivo para <strong>Ventas</strong></span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAdminViewMode('EJECUTIVO')}
+              className="px-3 py-1 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold cursor-pointer transition-colors"
+            >
+              Volver a Dashboard Ejecutivo
+            </button>
+          </div>
+        )}
+        <SalesDashboard
+          products={products}
+          onOpenNewNote={onOpenNewNote}
+          onOpenNewRestock={onOpenNewRestock}
+          onOpenEditNote={onOpenEditNote}
+          onOpenPrintNote={onOpenPrintNote}
+          onOpenAddPayment={onOpenAddPayment}
+          onOpenCustomers={onOpenCustomers}
+          onSelectTab={onSelectTab}
+          refreshTrigger={refreshTrigger}
+          currentUser={currentUser}
+        />
+      </div>
+    );
+  }
+
+  // 2. Si es de Almacén o el Super Admin previsualiza Almacén
+  if (role === 'ALMACEN' || (isSuperAdmin && adminViewMode === 'ALMACEN')) {
+    return (
+      <div className="space-y-4">
+        {isSuperAdmin && (
+          <div className="flex items-center justify-between bg-indigo-50 dark:bg-indigo-950/40 p-3 rounded-2xl border border-indigo-200 dark:border-indigo-900/60 text-xs">
+            <div className="flex items-center gap-2 text-indigo-800 dark:text-indigo-300 font-bold">
+              <Eye size={15} />
+              <span>Modo Previsualización: Estás viendo el Dashboard exclusivo para <strong>Almacén</strong></span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAdminViewMode('EJECUTIVO')}
+              className="px-3 py-1 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold cursor-pointer transition-colors"
+            >
+              Volver a Dashboard Ejecutivo
+            </button>
+          </div>
+        )}
+        <WarehouseDashboard
+          products={products}
+          containers={containers}
+          onSelectTab={onSelectTab}
+          currentUser={currentUser}
+        />
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -412,12 +410,16 @@ export default function ModernDashboard({
           hoveredMonthIdx={hoveredMonthIdx}
           setHoveredMonthIdx={setHoveredMonthIdx}
           formatShortMoney={formatShortMoney}
+          activeShipment={activeShipment}
+          onSelectTab={onSelectTab}
         />
 
         {/* Columna Derecha: Stock de Bodegas y Embarques en Tránsito */}
         <WarehouseStock
+          totalStockValuationCostBob={totalStockValuationCostBob}
           activeShipment={activeShipment}
           categoriesDistribution={categoriesDistribution}
+          formatShortMoney={formatShortMoney}
           onSelectTab={onSelectTab}
         />
       </div>
@@ -430,6 +432,7 @@ export default function ModernDashboard({
         searchTerm={searchTerm}
         setSearchTerm={setSearchTerm}
         formatMoney={formatMoney}
+        onSelectTab={onSelectTab}
         onOpenNewMovement={onOpenNewMovement}
         onOpenNewNote={onOpenNewNote}
         onOpenNewProduct={onOpenNewProduct}

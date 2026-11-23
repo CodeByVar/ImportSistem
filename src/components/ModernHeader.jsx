@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { 
   Search, 
   Bell, 
-  HelpCircle, 
+  Wallet, 
   ChevronDown,
   Sun,
   Moon,
@@ -29,15 +29,16 @@ import {
   ArrowRight,
   Clock
 } from 'lucide-react';
+import BrandLogo from './BrandLogo';
 
 const AVATAR_COLORS = [
-  '#EA580C', // Orange
+  '#FF8C00', // Brand Orange
+  '#FFC107', // Brand Gold
   '#0284c7', // Cyan/Blue
   '#059669', // Emerald
   '#7c3aed', // Purple
   '#e11d48', // Rose
-  '#d97706', // Amber
-  '#0f172a'  // Slate
+  '#0D0D0D'  // Brand Black
 ];
 
 export default function ModernHeader({ 
@@ -47,6 +48,7 @@ export default function ModernHeader({
   toggleTheme,
   onOpenNewNote,
   onOpenCustomers,
+  onOpenCashClosing,
   currentUser,
   products = [],
   onUpdateCurrentUser,
@@ -116,17 +118,20 @@ export default function ModernHeader({
   const fetchNotificationsData = async () => {
     setIsLoadingNotifs(true);
     try {
-      const [ordersRes, notesRes] = await Promise.all([
+      const [ordersRes, notesRes, allRecentRes] = await Promise.all([
         fetch(`/api/daily-orders?date=${localToday}`).then(r => r.json()),
-        fetch('/api/sales-notes?status=PENDIENTE&limit=40').then(r => r.json())
+        fetch('/api/sales-notes?status=PENDIENTE&limit=40').then(r => r.json()),
+        fetch('/api/sales-notes?limit=50').then(r => r.json())
       ]);
       if (ordersRes.success && ordersRes.data) {
         const orders = ordersRes.data.orders || [];
         setDailyOrdersList(orders.filter(o => o.status !== 'CANCELADO'));
       }
       if (notesRes.success && notesRes.data) {
-        setDebtNotesList(notesRes.data.filter(n => Number(n.balance_amount) > 0 && n.status !== 'ANULADO'));
-        setRecentNotes(notesRes.data);
+        setDebtNotesList(notesRes.data.filter(n => n.note_type !== 'REPOSICION_TIENDA' && Number(n.balance_amount) > 0 && n.status !== 'ANULADO'));
+      }
+      if (allRecentRes.success && allRecentRes.data) {
+        setRecentNotes(allRecentRes.data);
       }
     } catch (e) {
       console.error('Error loading notifications:', e);
@@ -321,6 +326,14 @@ export default function ModernHeader({
       action: () => { setIsSearchOpen(false); onOpenCustomers && onOpenCustomers(); }
     },
     {
+      id: 'cash-closing',
+      title: 'Cierre de Caja Diario & Gastos',
+      subtitle: 'Cuadre de Efectivo, QR (Jaime/Betho), gastos del día y reporte WhatsApp',
+      icon: Wallet,
+      color: 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/15',
+      action: () => { setIsSearchOpen(false); onOpenCashClosing && onOpenCashClosing(); }
+    },
+    {
       id: 'dashboard',
       title: 'Dashboard & Indicadores',
       subtitle: 'Vista general operativa y financiera',
@@ -372,21 +385,13 @@ export default function ModernHeader({
       <header 
         className="w-full bg-white dark:bg-slate-900 rounded-2xl sm:rounded-full shadow-[0_10px_35px_rgba(0,0,0,0.08)] dark:shadow-[0_10px_35px_rgba(0,0,0,0.4)] border-2 border-slate-200/90 dark:border-slate-800 px-3 sm:px-8 lg:px-12 py-2.5 sm:py-3.5 min-h-[60px] sm:min-h-[72px] flex items-center justify-between gap-2 sm:gap-6 transition-all"
       >
-        {/* Left: Brand Logo */}
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0 ml-1 sm:ml-4">
-          <div className="bg-slate-950 dark:bg-slate-800 text-white font-black px-3 sm:px-5 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl flex items-center gap-2.5 sm:gap-4 shadow-md border-2 border-slate-800 dark:border-slate-700 select-none">
-            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-gradient-to-br from-orange-500 to-[#EA580C] text-white flex items-center justify-center font-black text-xs sm:text-sm shadow-sm shrink-0">
-              R
-            </div>
-            <div className="flex flex-col leading-none hidden xs:flex sm:flex pr-1">
-              <span className="text-[9px] sm:text-[10px] tracking-[0.22em] text-orange-400 font-extrabold uppercase">
-                IMPORTADORA
-              </span>
-              <span className="text-xs sm:text-sm font-black tracking-wider text-white mt-0.5 sm:mt-1">
-                RIVERO
-              </span>
-            </div>
-          </div>
+        {/* Left: Official Importadora Rivero Brand Logo */}
+        <div
+          onClick={() => setActiveTab && setActiveTab('dashboard')}
+          className="flex items-center gap-2 sm:gap-3 shrink-0 ml-1 sm:ml-4 cursor-pointer"
+          title="Importadora Rivero - Simplificamos tu esfuerzo"
+        >
+          <BrandLogo variant="capsule-dark" showSlogan={true} />
         </div>
 
         {/* Right: Actions & User Capsule */}
@@ -416,15 +421,17 @@ export default function ModernHeader({
             )}
           </button>
 
-          {/* Circular Help Button (hidden on mobile) */}
-          <button 
-            type="button"
-            title="Buscador de Módulos y Ayuda"
-            onClick={handleOpenSearch}
-            className="hidden sm:flex w-9.5 h-9.5 rounded-full bg-slate-50 dark:bg-slate-800 border-2 border-slate-200/90 dark:border-slate-700 items-center justify-center text-slate-600 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer shadow-2xs"
-          >
-            <HelpCircle size={15} strokeWidth={2.2} />
-          </button>
+          {/* Circular Cash Closing & Daily Expenses Button (Replaces redundant Help icon) */}
+          {onOpenCashClosing && (
+            <button 
+              type="button"
+              title="Cierre de Caja Diario & Gastos (Efectivo, QR Jaime/Betho y WhatsApp)"
+              onClick={onOpenCashClosing}
+              className="w-8.5 h-8.5 sm:w-9.5 sm:h-9.5 rounded-full bg-emerald-50 dark:bg-emerald-500/15 border-2 border-emerald-200/90 dark:border-emerald-500/40 flex items-center justify-center text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-500/25 transition-colors cursor-pointer shadow-2xs"
+            >
+              <Wallet size={15} strokeWidth={2.2} />
+            </button>
+          )}
 
           {/* Circular Theme Toggle Button */}
           {toggleTheme && (
@@ -743,6 +750,35 @@ export default function ModernHeader({
                 </div>
               ) : (
                 <>
+                  {/* Section 0: Alertas de Stock Recién Llegado (Pendiente de carga en inventario) */}
+                  {notifFilter === 'ALL' && recentNotes.filter(n => n.pending_stock_arrival === 1 && n.status !== 'ANULADO').map(note => (
+                    <div
+                      key={`arr-${note.id}`}
+                      onClick={() => {
+                        setActiveTab && setActiveTab('inventory');
+                        setIsNotifOpen(false);
+                      }}
+                      className="p-3 rounded-xl border border-amber-300 dark:border-amber-500/40 bg-amber-50/70 dark:bg-amber-500/15 hover:bg-amber-100/70 dark:hover:bg-amber-500/25 transition-all cursor-pointer flex items-start gap-3"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center shrink-0 mt-0.5">
+                        <AlertCircle size={16} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 dark:text-amber-300">
+                            Mercadería Recién Llegada • Pendiente Carga ({note.note_code})
+                          </span>
+                        </div>
+                        <div className="text-xs sm:text-sm font-black text-slate-900 dark:text-white mt-0.5 truncate">
+                          {note.customer_name}
+                        </div>
+                        <div className="text-[11px] text-amber-900/80 dark:text-amber-200/80 mt-0.5">
+                          Emitida por <strong>{note.seller_name}</strong> ({note.date}) • Regularizar ingreso del lote en Inventario.
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
                   {/* Section A: Pedidos en Orden del Día (Especial Almacén) */}
                   {(notifFilter === 'ALL' || notifFilter === 'ORDERS') && pendingDailyOrders.map(order => (
                     <div

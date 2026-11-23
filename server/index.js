@@ -1,20 +1,64 @@
 import express from 'express';
 import cors from 'cors';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import db, { initDatabase } from './db.js';
 import { seedDatabase } from './seed.js';
+import { migrateFromBuffer, migrateFromExcelFile } from './migrateSheets.js';
+import {
+  hashPin,
+  verifyPin,
+  signToken,
+  sanitizeUserForClient,
+  sanitizeProductForRole,
+  checkLoginRateLimit,
+  recordLoginFailure,
+  resetLoginFailures,
+  apiRateLimiter,
+  securityHeaders,
+  createCorsOptions,
+  createAuthMiddleware,
+  requireRoles,
+  logSecurityEvent,
+  getClientIp
+} from './security.js';
+import {
+  createDatabaseBackup,
+  listDatabaseBackups,
+  startBackupScheduler
+} from './backup.js';
 
 initDatabase();
+startBackupScheduler(db);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const requireAuth = createAuthMiddleware(db);
 
-app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.disable('x-powered-by');
+app.use(securityHeaders);
+app.use(cors(createCorsOptions()));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use('/api', apiRateLimiter);
 
-// Health Check
+// Health Check (Public)
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', system: 'SISCONTROL Importadora API', timestamp: new Date().toISOString() });
+});
+
+// Global API Authentication Gate (Every /api/* route except /health and POST /users/login requires a valid JWT)
+app.use('/api', (req, res, next) => {
+  if (req.path === '/health' || (req.path === '/users/login' && req.method === 'POST')) {
+    return next();
+  }
+  return requireAuth(req, res, next);
+});
+
+// Verify active session & return fresh user profile
+app.get('/api/auth/me', (req, res) => {
+  res.json({ success: true, data: sanitizeUserForClient(req.user) });
 });
 
 // Dashboard Summary KPIs
@@ -97,30 +141,31 @@ app.get('/api/dashboard/stats', (req, res) => {
     const netProfit = grossProfit - totalExpenses;
     const grossMarginPercent = totalSales > 0 ? (grossProfit / totalSales) * 100 : 0;
     const netMarginPercent = totalSales > 0 ? (netProfit / totalSales) * 100 : 0;
+    const canSeeFinancialCosts = req.user && ['SUPER_ADMIN', 'ADMIN'].includes(req.user.role);
 
     res.json({
       success: true,
       data: {
         financials: {
           totalSales,
-          totalCogs: salesStats.total_cogs,
-          grossProfit,
-          grossMarginPercent,
-          totalExpenses,
-          netProfit,
-          netMarginPercent
+          totalCogs: canSeeFinancialCosts ? salesStats.total_cogs : 0,
+          grossProfit: canSeeFinancialCosts ? grossProfit : 0,
+          grossMarginPercent: canSeeFinancialCosts ? grossMarginPercent : 0,
+          totalExpenses: canSeeFinancialCosts ? totalExpenses : 0,
+          netProfit: canSeeFinancialCosts ? netProfit : 0,
+          netMarginPercent: canSeeFinancialCosts ? netMarginPercent : 0
         },
         merchandiseFlow: {
           unitsInbound: inboundStats.total_units_inbound,
-          inboundValue: inboundStats.total_inbound_value,
+          inboundValue: canSeeFinancialCosts ? inboundStats.total_inbound_value : 0,
           unitsSold: salesStats.total_units_sold,
           salesTransactions: salesStats.total_transactions,
           netInventoryChange: inboundStats.total_units_inbound - salesStats.total_units_sold
         },
         inventory: {
-          totalValuationCost: inventoryValuation.total_inventory_cost,
+          totalValuationCost: canSeeFinancialCosts ? inventoryValuation.total_inventory_cost : 0,
           totalValuationRetail: inventoryValuation.total_inventory_retail_value,
-          expectedProfitInStock: inventoryValuation.total_inventory_retail_value - inventoryValuation.total_inventory_cost,
+          expectedProfitInStock: canSeeFinancialCosts ? (inventoryValuation.total_inventory_retail_value - inventoryValuation.total_inventory_cost) : 0,
           totalStockUnits: inventoryValuation.total_stock_units,
           totalProductsCount: inventoryValuation.total_products_count,
           outOfStockCount: stockAlerts.out_of_stock,
@@ -345,7 +390,8 @@ app.get('/api/products', (req, res) => {
     query += ` ORDER BY p.name ASC`;
 
     const products = db.prepare(query).all(...params);
-    res.json({ success: true, data: products });
+    const safeProducts = products.map(p => sanitizeProductForRole(p, req.user?.role));
+    res.json({ success: true, data: safeProducts });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -422,71 +468,176 @@ app.post('/api/products', (req, res) => {
   }
 });
 
-// Update Product
-app.put('/api/products/:id', (req, res) => {
+// Update Product (Admin / Super Admin only — supports full wholesale pricing & warehouse fields)
+app.put('/api/products/:id', requireRoles('SUPER_ADMIN', 'ADMIN'), (req, res) => {
   try {
     const { id } = req.params;
+    const current = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+    if (!current) {
+      return res.status(404).json({ success: false, error: 'Producto no encontrado' });
+    }
+
     const {
       sku,
       name,
       category,
+      brand,
       unit,
+      warehouse,
+      units_per_box,
       fob_price,
       shipping_cost,
       tariff_cost,
       sale_price,
+      wholesale_price,
+      box_price,
+      special_price,
       min_stock,
       supplier,
       notes
     } = req.body;
 
-    const landedCost = Number(fob_price || 0) + Number(shipping_cost || 0) + Number(tariff_cost || 0);
+    const nextFob = fob_price !== undefined ? Number(fob_price || 0) : Number(current.fob_price || 0);
+    const nextShipping = shipping_cost !== undefined ? Number(shipping_cost || 0) : Number(current.shipping_cost || 0);
+    const nextTariff = tariff_cost !== undefined ? Number(tariff_cost || 0) : Number(current.tariff_cost || 0);
+    const nextLanded =
+      fob_price !== undefined || shipping_cost !== undefined || tariff_cost !== undefined
+        ? nextFob + nextShipping + nextTariff
+        : Number(current.landed_cost || 0);
 
-    const stmt = db.prepare(`
+    const nextSku = sku ? sku.trim().toUpperCase() : current.sku;
+    const nextName = name ? name.trim() : current.name;
+
+    db.prepare(`
       UPDATE products SET
         sku = ?,
         name = ?,
         category = ?,
+        brand = ?,
         unit = ?,
+        warehouse = ?,
+        units_per_box = ?,
         fob_price = ?,
         shipping_cost = ?,
         tariff_cost = ?,
         landed_cost = ?,
         sale_price = ?,
+        wholesale_price = ?,
+        box_price = ?,
+        special_price = ?,
         min_stock = ?,
         supplier = ?,
         notes = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `);
-
-    stmt.run(
-      sku.trim().toUpperCase(),
-      name.trim(),
-      category,
-      unit,
-      Number(fob_price || 0),
-      Number(shipping_cost || 0),
-      Number(tariff_cost || 0),
-      landedCost,
-      Number(sale_price || 0),
-      Number(min_stock || 10),
-      supplier,
-      notes,
+    `).run(
+      nextSku,
+      nextName,
+      category !== undefined ? category : current.category,
+      brand !== undefined ? brand : current.brand,
+      unit !== undefined ? unit : current.unit,
+      warehouse !== undefined ? warehouse : current.warehouse,
+      units_per_box !== undefined ? Math.max(1, Number(units_per_box || 1)) : (current.units_per_box || 1),
+      nextFob,
+      nextShipping,
+      nextTariff,
+      nextLanded,
+      sale_price !== undefined ? Number(sale_price || 0) : Number(current.sale_price || 0),
+      wholesale_price !== undefined ? Number(wholesale_price || 0) : Number(current.wholesale_price || 0),
+      box_price !== undefined ? Number(box_price || 0) : Number(current.box_price || 0),
+      special_price !== undefined ? Number(special_price || 0) : Number(current.special_price || 0),
+      min_stock !== undefined ? Number(min_stock || 0) : Number(current.min_stock || 10),
+      supplier !== undefined ? supplier : current.supplier,
+      notes !== undefined ? notes : current.notes,
       id
     );
 
-    res.json({ success: true, message: 'Producto actualizado con éxito' });
+    const updated = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+    logSecurityEvent(db, {
+      action: 'PRODUCT_UPDATED',
+      actorUser: req.user,
+      target: nextSku,
+      ip: getClientIp(req),
+      details: { name: nextName, wholesale_price: updated.wholesale_price, box_price: updated.box_price, special_price: updated.special_price }
+    });
+
+    res.json({ success: true, data: updated, message: 'Producto actualizado con éxito' });
   } catch (error) {
+    if (error.message.includes('UNIQUE constraint failed')) {
+      return res.status(400).json({ success: false, error: 'Ya existe otro producto con ese código SKU' });
+    }
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Delete Product
-app.delete('/api/products/:id', (req, res) => {
+// Quick Stock-In (Ingreso rápido de mercadería recién llegada desde el modal de Nota)
+app.post('/api/products/:id/quick-stock-in', requireRoles('SUPER_ADMIN', 'ADMIN', 'ALMACEN'), (req, res) => {
+  try {
+    const { id } = req.params;
+    const { boxes_count, units_per_box, quantity, notes } = req.body;
+    const prod = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+    if (!prod) {
+      return res.status(404).json({ success: false, error: 'Producto no encontrado' });
+    }
+
+    const upb = Math.max(1, parseInt(units_per_box || prod.units_per_box || 1, 10));
+    const addedUnits = quantity
+      ? parseInt(quantity, 10)
+      : Math.max(0, parseInt(boxes_count || 0, 10)) * upb;
+
+    if (!Number.isFinite(addedUnits) || addedUnits <= 0) {
+      return res.status(400).json({ success: false, error: 'La cantidad a ingresar debe ser mayor a 0' });
+    }
+
+    const todayStr = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0];
+
+    const tx = db.transaction(() => {
+      db.prepare('UPDATE products SET current_stock = MAX(0, current_stock) + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+        .run(addedUnits, id);
+
+      const unitCost = Number(prod.landed_cost || prod.fob_price || 0);
+      db.prepare(`
+        INSERT INTO inventory_movements (
+          product_id, type, quantity, unit_cost, unit_price, total_amount, gross_profit,
+          reference, party_name, date, notes
+        ) VALUES (?, 'ENTRADA', ?, ?, 0, ?, 0, 'INGRESO-RAPIDO', ?, ?, ?)
+      `).run(
+        id,
+        addedUnits,
+        unitCost,
+        addedUnits * unitCost,
+        `Ingreso Rápido (${req.user?.name || 'USUARIO'})`,
+        todayStr,
+        notes || `Ingreso rápido de mercadería recién llegada (+${addedUnits} u.)`
+      );
+    });
+    tx();
+
+    const updated = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+    logSecurityEvent(db, {
+      action: 'QUICK_STOCK_IN',
+      actorUser: req.user,
+      target: prod.sku,
+      ip: getClientIp(req),
+      details: { addedUnits, newStock: updated.current_stock }
+    });
+
+    res.json({
+      success: true,
+      data: sanitizeProductForRole(updated, req.user?.role),
+      message: `Ingreso rápido registrado: +${addedUnits} u. (Nuevo stock: ${updated.current_stock} u.)`
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Delete Product (Admin / Super Admin only)
+app.delete('/api/products/:id', requireRoles('SUPER_ADMIN', 'ADMIN'), (req, res) => {
   try {
     const { id } = req.params;
     db.prepare('DELETE FROM products WHERE id = ?').run(id);
+    logSecurityEvent(db, { action: 'PRODUCT_DELETED', actorUser: req.user, target: `product:${id}`, ip: getClientIp(req) });
     res.json({ success: true, message: 'Producto eliminado' });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -1327,12 +1478,13 @@ app.put('/api/containers/:id', (req, res) => {
   }
 });
 
-app.delete('/api/containers/:id', (req, res) => {
+app.delete('/api/containers/:id', requireRoles('SUPER_ADMIN'), (req, res) => {
   try {
     const { id } = req.params;
     db.prepare('DELETE FROM container_reservations WHERE container_id = ?').run(id);
     db.prepare('DELETE FROM container_items WHERE container_id = ?').run(id);
     db.prepare('DELETE FROM containers WHERE id = ?').run(id);
+    logSecurityEvent(db, { action: 'CONTAINER_DELETED', actorUser: req.user, target: `container:${id}`, ip: getClientIp(req) });
     res.json({ success: true, message: 'Embarque eliminado' });
   } catch (error) {
     res.status(400).json({ success: false, error: error.message });
@@ -1993,6 +2145,289 @@ app.post('/api/import/sheets', (req, res) => {
   }
 });
 
+// =============================================================================
+// REAL DATA MIGRATION FROM GOOGLE DRIVE (Multi-Sheet Excel / Link / Customers & Debts / Test Cleanup)
+// =============================================================================
+app.post('/api/import/google-drive-workbook', requireRoles('SUPER_ADMIN', 'ADMIN'), async (req, res) => {
+  try {
+    const { source, googleUrl, base64Data, filename, preset, replaceCatalog } = req.body;
+    const opts = { replaceCatalog: Boolean(replaceCatalog) };
+
+    if (source === 'url') {
+      if (!googleUrl || typeof googleUrl !== 'string') {
+        return res.status(400).json({ success: false, error: 'Pega el enlace de tu hoja de Google Sheets / Google Drive.' });
+      }
+      const match = googleUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+      if (!match) {
+        return res.status(400).json({
+          success: false,
+          error: 'El enlace no parece ser de Google Sheets. Debe contener "/spreadsheets/d/...".'
+        });
+      }
+      const sheetId = match[1];
+      const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx`;
+      const response = await fetch(exportUrl);
+
+      const contentType = response.headers.get('content-type') || '';
+      if (!response.ok || contentType.includes('text/html')) {
+        return res.status(400).json({
+          success: false,
+          error: 'No se pudo descargar directo porque el archivo en Google Drive es privado. En Google Sheets haz clic en "Compartir → Cualquier persona con el enlace (Lector)" o descárgalo como .xlsx y súbelo en la pestaña "Subir Excel (.xlsx)".'
+        });
+      }
+
+      const arrayBuf = await response.arrayBuffer();
+      const summary = migrateFromBuffer(Buffer.from(arrayBuf), `GoogleSheets_${sheetId.slice(0, 8)}.xlsx`, opts);
+      logSecurityEvent(db, {
+        action: 'GOOGLE_DRIVE_URL_IMPORT',
+        actorUser: req.user,
+        target: sheetId,
+        ip: getClientIp(req),
+        details: { totalSheets: summary.totalSheets, totalProcessed: summary.totalProcessed }
+      });
+      return res.json({ success: true, data: summary });
+    }
+
+    if (source === 'file') {
+      if (!base64Data) {
+        return res.status(400).json({ success: false, error: 'Selecciona un archivo Excel (.xlsx) descargado de tu Google Drive.' });
+      }
+      const cleanBase64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
+      const buf = Buffer.from(cleanBase64, 'base64');
+      const summary = migrateFromBuffer(buf, filename || 'Inventario_GoogleDrive.xlsx', opts);
+      logSecurityEvent(db, {
+        action: 'GOOGLE_DRIVE_XLSX_IMPORT',
+        actorUser: req.user,
+        target: filename || 'Inventario_GoogleDrive.xlsx',
+        ip: getClientIp(req),
+        details: { totalSheets: summary.totalSheets, totalProcessed: summary.totalProcessed }
+      });
+      return res.json({ success: true, data: summary });
+    }
+
+    if (source === 'local') {
+      const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+      const uyusPath = path.join(rootDir, 'INVENTARIO UYUS 26.xlsx');
+      const variosPath = path.join(rootDir, 'INVENTARIO VARIOS 26.xlsx');
+      let totalCreated = 0;
+      let totalUpdated = 0;
+      let totalSheets = 0;
+      const sheetsList = [];
+
+      if ((preset === 'varios' || preset === 'all') && fs.existsSync(variosPath)) {
+        const s1 = migrateFromExcelFile(variosPath, opts);
+        totalCreated += s1.createdCount;
+        totalUpdated += s1.updatedCount;
+        totalSheets += s1.totalSheets;
+        sheetsList.push(...s1.sheets);
+      }
+      if ((preset === 'uyus' || preset === 'all') && fs.existsSync(uyusPath)) {
+        const s2 = migrateFromExcelFile(uyusPath, { replaceCatalog: false });
+        totalCreated += s2.createdCount;
+        totalUpdated += s2.updatedCount;
+        totalSheets += s2.totalSheets;
+        sheetsList.push(...s2.sheets);
+      }
+
+      return res.json({
+        success: true,
+        data: {
+          filename: preset === 'all' ? 'INVENTARIO UYUS 26 + VARIOS 26' : `INVENTARIO ${String(preset).toUpperCase()} 26.xlsx`,
+          totalSheets,
+          sheets: sheetsList,
+          createdCount: totalCreated,
+          updatedCount: totalUpdated,
+          totalProcessed: totalCreated + totalUpdated
+        }
+      });
+    }
+
+    return res.status(400).json({ success: false, error: 'Tipo de origen de importación no válido.' });
+  } catch (err) {
+    console.error('Error importing Google Drive workbook:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Import Real Customers & Pending Debts / Initial Balances from Google Sheets
+app.post('/api/import/customers-debts', requireRoles('SUPER_ADMIN', 'ADMIN'), (req, res) => {
+  try {
+    const { records } = req.body;
+    if (!records || !Array.isArray(records) || records.length === 0) {
+      return res.status(400).json({ success: false, error: 'No se encontraron filas de clientes o saldos para importar.' });
+    }
+
+    let customersCreated = 0;
+    let customersUpdated = 0;
+    let notesCreated = 0;
+    const todayStr = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0];
+
+    const tx = db.transaction(() => {
+      const findCust = db.prepare('SELECT * FROM customers WHERE LOWER(name) = LOWER(?)');
+      const insertCust = db.prepare(`
+        INSERT INTO customers (code, name, phone, address, city, notes)
+        VALUES (?, ?, ?, ?, 'Cochabamba', ?)
+      `);
+      const updateCust = db.prepare(`
+        UPDATE customers SET
+          phone = COALESCE(NULLIF(?, ''), phone),
+          address = COALESCE(NULLIF(?, ''), address),
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `);
+
+      for (const r of records) {
+        const rawName = String(r.customer_name || r.cliente || r.nombre || '').trim().toUpperCase();
+        if (!rawName) continue;
+
+        const phone = String(r.phone || r.telefono || r.celular || '').trim();
+        const address = String(r.address || r.direccion || r.mercado || '').trim();
+        const totalAmt = Math.max(0, parseFloat(r.total_amount ?? r.total ?? r.monto_total ?? 0) || 0);
+        const paidAmt = Math.max(0, parseFloat(r.paid_amount ?? r.a_cuenta ?? r.pagado ?? 0) || 0);
+        const explicitBalance = parseFloat(r.balance_amount ?? r.saldo ?? r.deuda ?? NaN);
+        const balanceAmt = Number.isFinite(explicitBalance)
+          ? Math.max(0, explicitBalance)
+          : Math.max(0, totalAmt - paidAmt);
+        const finalTotal = totalAmt > 0 ? totalAmt : (paidAmt + balanceAmt);
+        const noteDate = String(r.date || r.fecha || todayStr).trim().slice(0, 10) || todayStr;
+        const seller = String(r.seller_name || r.vendedor || r.encargado || req.user?.name || 'HISTÓRICO').trim().toUpperCase();
+
+        let cust = findCust.get(rawName);
+        if (!cust) {
+          const seq = (db.prepare('SELECT COUNT(*) as c FROM customers').get().c || 0) + 1;
+          const initials = rawName.split(/\s+/).map(w => w[0]).join('').slice(0, 2) || 'CL';
+          const code = `IR-${initials}${seq}`;
+          const info = insertCust.run(code, rawName, phone, address, 'Importado de Google Drive');
+          cust = { id: info.lastInsertRowid, name: rawName, phone, address };
+          customersCreated++;
+        } else {
+          updateCust.run(phone, address, cust.id);
+          customersUpdated++;
+        }
+
+        // If row includes a sale note or pending balance > 0, register the historical note
+        if (finalTotal > 0 || balanceAmt > 0) {
+          const nextSeq = (db.prepare('SELECT COUNT(*) as c FROM sales_notes').get().c || 0) + 1;
+          const initials = rawName.split(/\s+/).map(w => w[0]).join('').slice(0, 2) || 'CL';
+          const rawCode = String(r.note_code || r.codigo_nota || r.nota || '').trim().toUpperCase();
+          const noteCode = rawCode || `IR${nextSeq}${initials}`;
+
+          const existsNote = db.prepare('SELECT id FROM sales_notes WHERE note_code = ?').get(noteCode);
+          const finalNoteCode = existsNote ? `${noteCode}-${nextSeq}` : noteCode;
+          const status = balanceAmt <= 0 ? 'PAGADO' : 'PENDIENTE';
+
+          const noteInfo = db.prepare(`
+            INSERT INTO sales_notes (
+              note_code, customer_id, customer_name, customer_phone, customer_address,
+              date, due_date, seller_name, delivery_type, delivery_destination,
+              notes, total_boxes, total_units, total_amount, paid_amount, balance_amount,
+              status, delivery_status, stock_deducted, note_type
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'A su tienda', ?, ?, 1, 1, ?, ?, ?, ?, 'ENTREGADO', 1, 'VENTA')
+          `).run(
+            finalNoteCode,
+            cust.id,
+            rawName,
+            phone,
+            address,
+            noteDate,
+            noteDate,
+            seller,
+            address || 'Cochabamba',
+            String(r.notes || r.detalle || 'Saldo migrado desde Google Drive').trim(),
+            finalTotal,
+            finalTotal - balanceAmt,
+            balanceAmt,
+            status
+          );
+
+          db.prepare(`
+            INSERT INTO sales_note_items (
+              note_id, product_id, sku, description, unit_med, sale_mode,
+              boxes_count, units_per_box, quantity, unit_price, subtotal, warehouse_source
+            ) VALUES (?, NULL, 'SALDO-INICIAL', ?, 'UNI', 'UNIDAD', 1, 1, 1, ?, ?, 'ALMACEN')
+          `).run(
+            noteInfo.lastInsertRowid,
+            String(r.notes || r.detalle || `Saldo / Nota migrada (${finalNoteCode})`).trim(),
+            finalTotal,
+            finalTotal
+          );
+
+          notesCreated++;
+        }
+      }
+    });
+    tx();
+
+    logSecurityEvent(db, {
+      action: 'CUSTOMERS_DEBTS_IMPORTED',
+      actorUser: req.user,
+      target: 'customers+notes',
+      ip: getClientIp(req),
+      details: { customersCreated, customersUpdated, notesCreated }
+    });
+
+    res.json({
+      success: true,
+      data: { customersCreated, customersUpdated, notesCreated },
+      message: `Migración lista: ${customersCreated} clientes nuevos, ${customersUpdated} actualizados y ${notesCreated} notas/saldos cargados.`
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Clean all test operational records (creates automatic backup first!)
+app.post('/api/system/clean-test-data', requireRoles('SUPER_ADMIN'), async (req, res) => {
+  try {
+    const backup = await createDatabaseBackup(db, 'pre-clean-ui');
+    const tablesToClean = [
+      'sales_note_payments',
+      'sales_note_items',
+      'sales_notes',
+      'daily_dispatch_orders',
+      'daily_dispatch_side_items',
+      'daily_dispatch_meta',
+      'weekly_dispatches',
+      'inventory_movements',
+      'expenses',
+      'container_reservations',
+      'container_items',
+      'containers',
+      'customers'
+    ];
+
+    const deletedCounts = {};
+    const tx = db.transaction(() => {
+      for (const t of tablesToClean) {
+        const c = db.prepare(`SELECT COUNT(*) as c FROM ${t}`).get().c;
+        deletedCounts[t] = c;
+        db.prepare(`DELETE FROM ${t}`).run();
+        try {
+          db.prepare('DELETE FROM sqlite_sequence WHERE name = ?').run(t);
+        } catch {}
+      }
+      db.prepare('UPDATE products SET current_stock = 0, updated_at = CURRENT_TIMESTAMP WHERE current_stock < 0').run();
+    });
+    tx();
+
+    logSecurityEvent(db, {
+      action: 'TEST_DATA_CLEANED',
+      actorUser: req.user,
+      target: backup.filename,
+      ip: getClientIp(req),
+      details: deletedCounts
+    });
+
+    res.json({
+      success: true,
+      data: { backup: backup.filename, deletedCounts },
+      message: `Datos de prueba eliminados con éxito (Respaldo previo guardado: ${backup.filename}).`
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // ==================== CLIENTES (CARTERA / RESUMEN 2026) ====================
 app.get('/api/customers', (req, res) => {
   try {
@@ -2111,7 +2546,7 @@ app.get('/api/customers/:id/statement', (req, res) => {
 // ==================== NOTAS DE VENTA & DESPACHOS ====================
 app.get('/api/sales-notes', (req, res) => {
   try {
-    const { search, status, customerId, dailyDate, limit = 100, offset = 0 } = req.query;
+    const { search, status, customerId, dailyDate, noteType, limit = 100, offset = 0 } = req.query;
     let query = `
       SELECT 
         sn.*,
@@ -2134,6 +2569,11 @@ app.get('/api/sales-notes', (req, res) => {
       params.push(status);
     }
 
+    if (noteType && noteType !== 'TODAS') {
+      query += ` AND COALESCE(sn.note_type, 'VENTA') = ? `;
+      params.push(noteType);
+    }
+
     if (customerId) {
       query += ` AND sn.customer_id = ? `;
       params.push(customerId);
@@ -2144,21 +2584,32 @@ app.get('/api/sales-notes', (req, res) => {
 
     const notes = db.prepare(query).all(...params);
 
-    const totalCount = db.prepare(`
-      SELECT COUNT(id) as c FROM sales_notes
-      WHERE 1=1
-      ${status && status !== 'TODAS' ? `AND status = '${status}'` : ''}
-      ${customerId ? `AND customer_id = ${customerId}` : ''}
-    `).get().c;
+    let countQuery = 'SELECT COUNT(id) as c FROM sales_notes WHERE 1=1';
+    const countParams = [];
+    if (status && status !== 'TODAS') {
+      countQuery += ' AND status = ?';
+      countParams.push(status);
+    }
+    if (noteType && noteType !== 'TODAS') {
+      countQuery += " AND COALESCE(note_type, 'VENTA') = ?";
+      countParams.push(noteType);
+    }
+    if (customerId) {
+      countQuery += ' AND customer_id = ?';
+      countParams.push(customerId);
+    }
+    const totalCount = db.prepare(countQuery).get(...countParams).c;
 
+    // Exclude internal REPOSICION_TIENDA notes from financial sales/debt KPIs
     const kpis = db.prepare(`
       SELECT 
-        COALESCE(SUM(CASE WHEN status NOT IN ('ANULADO','PRE-RESERVA') THEN total_amount ELSE 0 END), 0) AS total_sales,
-        COALESCE(SUM(CASE WHEN status NOT IN ('ANULADO','PRE-RESERVA') THEN paid_amount ELSE 0 END), 0) AS total_collected,
-        COALESCE(SUM(CASE WHEN status NOT IN ('ANULADO','PRE-RESERVA') THEN balance_amount ELSE 0 END), 0) AS total_receivable,
-        COUNT(CASE WHEN status = 'PENDIENTE' THEN 1 END) AS pending_notes_count,
+        COALESCE(SUM(CASE WHEN COALESCE(note_type, 'VENTA') != 'REPOSICION_TIENDA' AND status NOT IN ('ANULADO','PRE-RESERVA') THEN total_amount ELSE 0 END), 0) AS total_sales,
+        COALESCE(SUM(CASE WHEN COALESCE(note_type, 'VENTA') != 'REPOSICION_TIENDA' AND status NOT IN ('ANULADO','PRE-RESERVA') THEN paid_amount ELSE 0 END), 0) AS total_collected,
+        COALESCE(SUM(CASE WHEN COALESCE(note_type, 'VENTA') != 'REPOSICION_TIENDA' AND status NOT IN ('ANULADO','PRE-RESERVA') THEN balance_amount ELSE 0 END), 0) AS total_receivable,
+        COUNT(CASE WHEN COALESCE(note_type, 'VENTA') != 'REPOSICION_TIENDA' AND status = 'PENDIENTE' THEN 1 END) AS pending_notes_count,
         COUNT(CASE WHEN status = 'PRE-RESERVA' THEN 1 END) AS pre_reserva_count,
-        COUNT(CASE WHEN status NOT IN ('ANULADO') THEN 1 END) AS total_notes
+        COUNT(CASE WHEN COALESCE(note_type, 'VENTA') = 'REPOSICION_TIENDA' AND status NOT IN ('ANULADO', 'RECIBIDO', 'ENTREGADO') THEN 1 END) AS active_restocks_count,
+        COUNT(CASE WHEN COALESCE(note_type, 'VENTA') != 'REPOSICION_TIENDA' AND status NOT IN ('ANULADO') THEN 1 END) AS total_notes
       FROM sales_notes
     `).get();
 
@@ -2268,22 +2719,70 @@ app.post('/api/sales-notes', (req, res) => {
     payments
   } = req.body;
 
-  if (!customer_name || !items || !Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ success: false, error: 'Debe especificar el cliente y al menos un producto a despachar.' });
+  const isRestock = req.body.note_type === 'REPOSICION_TIENDA';
+  const allowPendingArrival = Boolean(req.body.allow_pending_arrival);
+  const effectiveCustomerName = isRestock
+    ? (customer_name && customer_name.trim() ? customer_name.trim() : 'REPOSICIÓN TIENDA')
+    : customer_name;
+
+  if (!effectiveCustomerName || !items || !Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ success: false, error: 'Debe especificar el destino/cliente y al menos un producto a despachar.' });
+  }
+
+  // Smart Stock Validation (Option 2): Validate stock for VENTA notes unless controlled pending-arrival override is explicitly checked
+  let hasStockShortage = false;
+  if (!isRestock && req.body.status !== 'PRE-RESERVA') {
+    const requestedByProduct = new Map();
+    for (const item of items) {
+      if (!item.product_id) continue;
+      const mode = item.sale_mode || 'CAJA';
+      const qtyUnits = mode === 'CAJA'
+        ? parseInt(item.boxes_count || 1, 10) * parseInt(item.units_per_box || 1, 10)
+        : parseInt(item.quantity || 1, 10);
+      requestedByProduct.set(item.product_id, (requestedByProduct.get(item.product_id) || 0) + qtyUnits);
+    }
+
+    const shortages = [];
+    for (const [prodId, reqQty] of requestedByProduct.entries()) {
+      const prod = db.prepare('SELECT sku, name, current_stock FROM products WHERE id = ?').get(prodId);
+      if (prod) {
+        const avail = Math.max(0, Number(prod.current_stock || 0));
+        if (reqQty > avail) {
+          shortages.push(`${prod.sku} (${prod.name}): pides ${reqQty} u., disponible ${avail} u.`);
+        }
+      }
+    }
+
+    if (shortages.length > 0) {
+      hasStockShortage = true;
+      if (!allowPendingArrival) {
+        return res.status(400).json({
+          success: false,
+          code: 'INSUFFICIENT_STOCK',
+          error: `Stock insuficiente: ${shortages.join(' | ')}. Ingresa el stock rápido o marca "Mercadería recién llegada (Pendiente de carga)".`
+        });
+      }
+    }
   }
 
   const createTx = db.transaction(() => {
-    // Resolver customer_id si no vino pero coincide por nombre
-    let finalCustId = customer_id || null;
-    if (!finalCustId && customer_name) {
-      const match = db.prepare('SELECT id FROM customers WHERE name = ? COLLATE NOCASE').get(customer_name.trim());
+    // Resolver customer_id solo si es VENTA normal
+    let finalCustId = isRestock ? null : (customer_id || null);
+    if (!isRestock && !finalCustId && effectiveCustomerName) {
+      const match = db.prepare('SELECT id FROM customers WHERE name = ? COLLATE NOCASE').get(effectiveCustomerName.trim());
       if (match) finalCustId = match.id;
     }
 
-    // Generar código de nota único tipo IR42EG (IR + correlativo + iniciales del cliente)
-    const nextSeq = (db.prepare('SELECT count(*) as c FROM sales_notes').get().c || 0) + 1;
-    const clientCodePart = customer_name.trim().split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() || 'XX';
-    const noteCode = `IR${nextSeq}${clientCodePart}`;
+    // Generar código de nota único: REP-001 para Reposición a Tienda o IR42EG para Venta
+    let noteCode;
+    if (isRestock) {
+      const restockSeq = (db.prepare("SELECT count(*) as c FROM sales_notes WHERE note_type = 'REPOSICION_TIENDA'").get().c || 0) + 1;
+      noteCode = `REP-${String(restockSeq).padStart(3, '0')}`;
+    } else {
+      const nextSeq = (db.prepare("SELECT count(*) as c FROM sales_notes WHERE COALESCE(note_type, 'VENTA') != 'REPOSICION_TIENDA'").get().c || 0) + 1;
+      const clientCodePart = effectiveCustomerName.trim().split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() || 'XX';
+      noteCode = `IR${nextSeq}${clientCodePart}`;
+    }
 
     let totalBoxes = 0;
     let totalUnits = 0;
@@ -2291,7 +2790,7 @@ app.post('/api/sales-notes', (req, res) => {
 
     for (const item of items) {
       const mode = item.sale_mode || 'CAJA';
-      const unitPrice = parseFloat(item.unit_price) || 0;
+      const unitPrice = isRestock ? 0 : (parseFloat(item.unit_price) || 0);
       let qtyUnits = 0;
       let sub = 0;
 
@@ -2310,46 +2809,49 @@ app.post('/api/sales-notes', (req, res) => {
       totalAmount += sub;
     }
 
-    // Calcular abonos iniciales
+    // Calcular abonos iniciales (siempre 0 para Reposición interna)
     let initialPaid = 0;
-    if (payments && Array.isArray(payments)) {
+    if (!isRestock && payments && Array.isArray(payments)) {
       for (const p of payments) {
         initialPaid += parseFloat(p.amount) || 0;
       }
     }
 
-    const balance = Math.max(0, totalAmount - initialPaid);
-    // Support PRE-RESERVA status: passed explicitly in request body
-    const isPreReserva = req.body.status === 'PRE-RESERVA';
-    const status = isPreReserva ? 'PRE-RESERVA' : (balance <= 0 ? 'PAGADO' : 'PENDIENTE');
+    const balance = isRestock ? 0 : Math.max(0, totalAmount - initialPaid);
+    const isPreReserva = !isRestock && req.body.status === 'PRE-RESERVA';
+    const status = isRestock
+      ? 'EN_CURSO'
+      : (isPreReserva ? 'PRE-RESERVA' : (balance <= 0 ? 'PAGADO' : 'PENDIENTE'));
 
-    const isImmediateDelivery = req.body.delivery_status === 'ENTREGADO';
-    const deliveryStatus = isImmediateDelivery ? 'ENTREGADO' : 'PENDIENTE';
+    const isImmediateDelivery = !isRestock && req.body.delivery_status === 'ENTREGADO';
+    const deliveryStatus = isRestock ? 'EN_CURSO' : (isImmediateDelivery ? 'ENTREGADO' : 'PENDIENTE');
     const stockDeducted = isImmediateDelivery ? 1 : 0;
     const deliveredAt = isImmediateDelivery ? (date || new Date().toISOString().split('T')[0]) : null;
+    const noteType = isRestock ? 'REPOSICION_TIENDA' : 'VENTA';
 
     // Insertar Nota
+    const pendingStockArrival = (!isRestock && hasStockShortage && allowPendingArrival) ? 1 : 0;
     const insertNoteStmt = db.prepare(`
       INSERT INTO sales_notes (
         note_code, customer_id, customer_name, customer_phone, customer_address,
         date, due_date, seller_name, delivery_type, delivery_destination, delivery_location_url, notes,
         total_boxes, total_units, total_amount, paid_amount, balance_amount, status,
-        delivery_status, stock_deducted, delivered_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        delivery_status, stock_deducted, delivered_at, note_type, pending_stock_arrival
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const noteResult = insertNoteStmt.run(
       noteCode,
       finalCustId,
-      customer_name.trim().toUpperCase(),
-      customer_phone || '',
-      customer_address || '',
+      effectiveCustomerName.trim().toUpperCase(),
+      isRestock ? '' : (customer_phone || ''),
+      isRestock ? 'TIENDA CENTRAL' : (customer_address || ''),
       date || new Date().toISOString().split('T')[0],
       due_date || date || new Date().toISOString().split('T')[0],
-      seller_name || 'DANIEL',
-      delivery_type || 'A su tienda',
-      delivery_destination || '',
-      delivery_location_url || '',
+      seller_name || req.user?.name || 'DANIEL',
+      isRestock ? 'Reposición a Tienda' : (delivery_type || 'A su tienda'),
+      isRestock ? (delivery_destination || 'TIENDA CENTRAL') : (delivery_destination || ''),
+      isRestock ? '' : (delivery_location_url || ''),
       notes || '',
       totalBoxes,
       totalUnits,
@@ -2359,8 +2861,20 @@ app.post('/api/sales-notes', (req, res) => {
       status,
       deliveryStatus,
       stockDeducted,
-      deliveredAt
+      deliveredAt,
+      noteType,
+      pendingStockArrival
     );
+
+    if (pendingStockArrival === 1) {
+      logSecurityEvent(db, {
+        action: 'STOCK_OVERRIDE_PENDING_ARRIVAL',
+        actorUser: req.user,
+        target: noteCode,
+        ip: getClientIp(req),
+        details: { customer: effectiveCustomerName, itemsCount: items.length }
+      });
+    }
 
     const noteId = noteResult.lastInsertRowid;
 
@@ -2374,7 +2888,7 @@ app.post('/api/sales-notes', (req, res) => {
 
     const deductStockStmt = db.prepare(`
       UPDATE products 
-      SET current_stock = current_stock - ?, updated_at = CURRENT_TIMESTAMP
+      SET current_stock = MAX(0, current_stock - ?), updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `);
 
@@ -2482,20 +2996,20 @@ app.post('/api/sales-notes', (req, res) => {
     `).run(
       noteDate,
       noteDayName,
-      'TITO',
+      (seller_name || req.user?.name || 'ENCARGADO').toUpperCase(),
       maxRn,
-      customer_name.trim().toUpperCase(),
+      effectiveCustomerName.trim().toUpperCase(),
       noteId,
       noteCode,
-      1, // mañana marcado por defecto
-      0,
-      'EN PREPARACIÓN', // Estado inicial en espera / en preparación para despacho
-      delivery_destination || customer_address || '',
+      req.body.shift === 'TARDE' ? 0 : 1,
+      req.body.shift === 'TARDE' ? 1 : 0,
+      'EN PREPARACIÓN',
+      isRestock ? (delivery_destination || 'TIENDA CENTRAL') : (delivery_destination || customer_address || ''),
       notes || '',
       ''
     );
 
-    return { noteId, noteCode, totalAmount, balance, status };
+    return { noteId, noteCode, totalAmount, balance, status, noteType };
   });
 
   try {
@@ -2503,7 +3017,9 @@ app.post('/api/sales-notes', (req, res) => {
     res.json({
       success: true,
       data: result,
-      message: `Nota de venta ${result.noteCode} emitida con éxito. Stock de inventario descontado.`
+      message: result.noteType === 'REPOSICION_TIENDA'
+        ? `Pedido de reposición ${result.noteCode} enviado a Almacén (en curso y editable hasta llegada a tienda).`
+        : `Nota de venta ${result.noteCode} emitida con éxito.`
     });
   } catch (err) {
     console.error('Error creating sales note:', err);
@@ -2698,7 +3214,9 @@ app.put('/api/sales-notes/:id', (req, res) => {
       throw new Error('No se puede editar una nota anulada.');
     }
 
-    const wasStockDeducted = existingNote.stock_deducted === 1;
+    const isRestock = existingNote.note_type === 'REPOSICION_TIENDA' || req.body.note_type === 'REPOSICION_TIENDA';
+    const allowPendingArrival = Boolean(req.body.allow_pending_arrival) || existingNote.pending_stock_arrival === 1;
+    const wasStockDeducted = !isRestock && existingNote.stock_deducted === 1;
 
     // 1. Revertir deducción de stock y movimientos antiguos SOLO si ya se había descontado
     if (wasStockDeducted) {
@@ -2711,6 +3229,37 @@ app.put('/api/sales-notes/:id', (req, res) => {
       }
       db.prepare('DELETE FROM inventory_movements WHERE reference = ?').run(existingNote.note_code);
     }
+
+    // 1b. Smart Stock Validation (Option 2) on VENTA edits
+    let hasEditShortage = false;
+    if (!isRestock && existingNote.status !== 'PRE-RESERVA') {
+      const reqMap = new Map();
+      for (const item of items) {
+        if (!item.product_id) continue;
+        const mode = item.sale_mode || 'CAJA';
+        const q = mode === 'CAJA'
+          ? parseInt(item.boxes_count || 1, 10) * parseInt(item.units_per_box || 1, 10)
+          : parseInt(item.quantity || 1, 10);
+        reqMap.set(item.product_id, (reqMap.get(item.product_id) || 0) + q);
+      }
+      const shortages = [];
+      for (const [pid, reqQty] of reqMap.entries()) {
+        const prod = db.prepare('SELECT sku, name, current_stock FROM products WHERE id = ?').get(pid);
+        if (prod) {
+          const avail = Math.max(0, Number(prod.current_stock || 0));
+          if (reqQty > avail) {
+            shortages.push(`${prod.sku}: pides ${reqQty} u., disponible ${avail} u.`);
+          }
+        }
+      }
+      if (shortages.length > 0) {
+        hasEditShortage = true;
+        if (!allowPendingArrival) {
+          throw new Error(`Stock insuficiente: ${shortages.join(' | ')}. Ingresa el stock rápido o marca "Mercadería recién llegada".`);
+        }
+      }
+    }
+
     db.prepare('DELETE FROM sales_note_items WHERE note_id = ?').run(noteId);
 
     // 2. Insertar nuevos ítems y descontar stock actualizado SOLO si está entregada
@@ -2727,7 +3276,7 @@ app.put('/api/sales-notes/:id', (req, res) => {
 
     const deductStockStmt = db.prepare(`
       UPDATE products 
-      SET current_stock = current_stock - ?, updated_at = CURRENT_TIMESTAMP
+      SET current_stock = MAX(0, current_stock - ?), updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `);
 
@@ -2821,10 +3370,15 @@ app.put('/api/sales-notes/:id', (req, res) => {
       }
     }
 
-    // Recalcular saldo con todos los pagos registrados
-    const paymentsTotal = db.prepare('SELECT COALESCE(SUM(amount), 0) as paid FROM sales_note_payments WHERE note_id = ?').get(noteId).paid || 0;
-    const balance = Math.max(0, totalAmount - paymentsTotal);
-    const status = balance <= 0 ? 'PAGADO' : 'PENDIENTE';
+    // Recalcular saldo con todos los pagos registrados (Reposición a Tienda siempre Bs 0 / sin deuda)
+    const paymentsTotal = isRestock
+      ? 0
+      : (db.prepare('SELECT COALESCE(SUM(amount), 0) as paid FROM sales_note_payments WHERE note_id = ?').get(noteId).paid || 0);
+    const finalTotalAmount = isRestock ? 0 : totalAmount;
+    const balance = isRestock ? 0 : Math.max(0, finalTotalAmount - paymentsTotal);
+    const status = isRestock
+      ? (existingNote.status === 'RECIBIDO' ? 'RECIBIDO' : 'EN_CURSO')
+      : (balance <= 0 ? 'PAGADO' : 'PENDIENTE');
 
     db.prepare(`
       UPDATE sales_notes SET
@@ -2848,20 +3402,20 @@ app.put('/api/sales-notes/:id', (req, res) => {
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(
-      customer_id || existingNote.customer_id,
+      isRestock ? null : (customer_id || existingNote.customer_id),
       customer_name.trim().toUpperCase(),
-      customer_phone || '',
-      customer_address || '',
+      isRestock ? '' : (customer_phone || ''),
+      isRestock ? 'TIENDA CENTRAL' : (customer_address || ''),
       date || existingNote.date,
       due_date || existingNote.due_date,
       seller_name || existingNote.seller_name,
-      delivery_type || existingNote.delivery_type,
+      isRestock ? 'Reposición a Tienda' : (delivery_type || existingNote.delivery_type),
       delivery_destination || existingNote.delivery_destination,
-      delivery_location_url || existingNote.delivery_location_url,
+      isRestock ? '' : (delivery_location_url || existingNote.delivery_location_url),
       notes || '',
       totalBoxes,
       totalUnits,
-      totalAmount,
+      finalTotalAmount,
       paymentsTotal,
       balance,
       status,
@@ -3033,10 +3587,10 @@ app.post('/api/sales-notes/:id/deliver', (req, res) => {
       WHERE sales_note_id = ?
     `).run(noteId);
 
-    // DESCONTAR RECIÉN EL STOCK FÍSICO AL CONFIRMAR LA ENTREGA
+    // DESCONTAR RECIÉN EL STOCK FÍSICO AL CONFIRMAR LA ENTREGA (nunca baja de 0 para evitar negativos)
     if (!note.stock_deducted || note.stock_deducted === 0) {
       const noteItems = db.prepare('SELECT * FROM sales_note_items WHERE note_id = ?').all(noteId);
-      const deductStockStmt = db.prepare('UPDATE products SET current_stock = current_stock - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
+      const deductStockStmt = db.prepare('UPDATE products SET current_stock = MAX(0, current_stock - ?), updated_at = CURRENT_TIMESTAMP WHERE id = ?');
       const insertMovementStmt = db.prepare(`
         INSERT INTO inventory_movements (
           product_id, type, quantity, unit_price, total_amount, gross_profit,
@@ -3090,12 +3644,76 @@ app.post('/api/sales-notes/:id/deliver', (req, res) => {
   }
 });
 
+// Confirmar llegada física de Reposición a Tienda (Sin cobro, sin afectar stock general — Opción 1)
+app.post('/api/sales-notes/:id/confirm-restock', (req, res) => {
+  try {
+    const noteId = req.params.id;
+    const note = db.prepare('SELECT * FROM sales_notes WHERE id = ?').get(noteId);
+    if (!note) {
+      return res.status(404).json({ success: false, error: 'Pedido de reposición no encontrado.' });
+    }
+    if (note.note_type !== 'REPOSICION_TIENDA') {
+      return res.status(400).json({ success: false, error: 'Esta nota no es un pedido de reposición interna.' });
+    }
+    if (note.status === 'ANULADO') {
+      return res.status(400).json({ success: false, error: 'Este pedido fue anulado.' });
+    }
+
+    const confirmedBy = (req.body?.confirmed_by || req.user?.name || req.user?.username || 'TIENDA').trim().toUpperCase();
+    const nowIso = new Date().toISOString();
+
+    const tx = db.transaction(() => {
+      db.prepare(`
+        UPDATE sales_notes SET
+          status = 'RECIBIDO',
+          delivery_status = 'ENTREGADO',
+          delivered_at = ?,
+          restock_confirmed_by = ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(nowIso, confirmedBy, noteId);
+
+      db.prepare(`
+        UPDATE daily_dispatch_orders SET
+          status = 'ENTREGADO',
+          updated_at = CURRENT_TIMESTAMP
+        WHERE sales_note_id = ?
+      `).run(noteId);
+    });
+    tx();
+
+    logSecurityEvent(db, {
+      action: 'RESTOCK_CONFIRMED',
+      actorUser: req.user,
+      target: note.note_code,
+      ip: getClientIp(req),
+      details: { confirmedBy, total_boxes: note.total_boxes, total_units: note.total_units }
+    });
+
+    const updated = db.prepare('SELECT * FROM sales_notes WHERE id = ?').get(noteId);
+    res.json({
+      success: true,
+      data: updated,
+      message: `Reposición ${note.note_code} confirmada como RECIBIDA EN TIENDA por ${confirmedBy}.`
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Anular nota de venta y reponer inventario
-app.delete('/api/sales-notes/:id', (req, res) => {
+app.delete('/api/sales-notes/:id', requireRoles('SUPER_ADMIN', 'ADMIN', 'VENTAS'), (req, res) => {
   const tx = db.transaction(() => {
     const note = db.prepare('SELECT * FROM sales_notes WHERE id = ?').get(req.params.id);
     if (!note) throw new Error('Nota no encontrada');
     if (note.status === 'ANULADO') throw new Error('La nota ya se encuentra anulada.');
+    logSecurityEvent(db, {
+      action: 'NOTE_CANCELLED',
+      actorUser: req.user,
+      target: note.note_code || `note:${req.params.id}`,
+      ip: getClientIp(req),
+      details: { customer: note.customer_name, total: note.total_amount }
+    });
 
     // Reponer stock SOLO si el stock fue descontado previamente al confirmar entrega (stock_deducted === 1)
     if (note.stock_deducted === 1) {
@@ -3139,6 +3757,11 @@ app.get('/api/daily-orders', (req, res) => {
       SELECT 
         ddo.*,
         sn.status AS note_status,
+        sn.note_type AS note_type,
+        sn.delivery_status AS note_delivery_status,
+        sn.total_boxes AS note_total_boxes,
+        sn.total_units AS note_total_units,
+        sn.restock_confirmed_by AS restock_confirmed_by,
         sn.total_amount AS note_total,
         sn.paid_amount AS note_paid,
         sn.balance_amount AS note_balance,
@@ -3471,27 +4094,9 @@ app.post('/api/reset-demo', (req, res) => {
 });
 
 // =============================================================================
-// CONTAINERS / SHIPMENTS (Embarques y Camiones)
+// CONTAINERS / SHIPMENTS — Unique Item & Single-Container Routes
+// (Primary container CRUD routes live earlier in this file)
 // =============================================================================
-
-// GET all containers
-app.get('/api/containers', (req, res) => {
-  try {
-    const containers = db.prepare(`
-      SELECT c.*,
-        COUNT(DISTINCT ci.id) AS item_count,
-        COALESCE(SUM(ci.boxes_count), 0) AS total_boxes,
-        COALESCE(SUM(ci.total_units), 0) AS total_units_sum
-      FROM containers c
-      LEFT JOIN container_items ci ON ci.container_id = c.id
-      GROUP BY c.id
-      ORDER BY c.created_at DESC
-    `).all();
-    res.json({ success: true, data: containers });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
 
 // GET single container
 app.get('/api/containers/:id', (req, res) => {
@@ -3499,226 +4104,6 @@ app.get('/api/containers/:id', (req, res) => {
     const container = db.prepare('SELECT * FROM containers WHERE id = ?').get(req.params.id);
     if (!container) return res.status(404).json({ success: false, error: 'Contenedor no encontrado' });
     res.json({ success: true, data: container });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// POST create container
-app.post('/api/containers', (req, res) => {
-  try {
-    const {
-      tracking_number, origin_country, shipping_line, status,
-      departure_date, estimated_arrival, notes,
-      transport_type, truck_plate, truck_driver, port_name,
-      port_arrival_date, warehouse_arrival_date,
-      total_cbm, total_fob, total_freight, total_taxes
-    } = req.body;
-
-    if (!tracking_number) return res.status(400).json({ success: false, error: 'Número de tracking requerido' });
-
-    const result = db.prepare(`
-      INSERT INTO containers (
-        tracking_number, origin_country, shipping_line, status,
-        departure_date, estimated_arrival, notes,
-        transport_type, truck_plate, truck_driver, port_name,
-        port_arrival_date, warehouse_arrival_date,
-        total_cbm, total_fob, total_freight, total_taxes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      tracking_number,
-      origin_country || 'China',
-      shipping_line || 'Importación Directa',
-      status || (transport_type === 'TERRESTRE' ? 'camion_transito' : 'mar_transito'),
-      departure_date || null,
-      estimated_arrival || null,
-      notes || null,
-      transport_type || 'MARITIMO',
-      truck_plate || null,
-      truck_driver || null,
-      port_name || 'Arica (Chile)',
-      port_arrival_date || null,
-      warehouse_arrival_date || null,
-      total_cbm || 0,
-      total_fob || 0,
-      total_freight || 0,
-      total_taxes || 0
-    );
-
-    const newContainer = db.prepare('SELECT * FROM containers WHERE id = ?').get(result.lastInsertRowid);
-    res.json({ success: true, data: newContainer, id: result.lastInsertRowid });
-  } catch (err) {
-    if (err.message.includes('UNIQUE constraint')) {
-      return res.status(400).json({ success: false, error: 'Ya existe un embarque con ese número de tracking.' });
-    }
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// PUT update container
-app.put('/api/containers/:id', (req, res) => {
-  try {
-    const id = req.params.id;
-    const {
-      tracking_number, origin_country, shipping_line, status,
-      departure_date, estimated_arrival, actual_arrival, notes,
-      transport_type, truck_plate, truck_driver, port_name,
-      port_arrival_date, warehouse_arrival_date,
-      total_cbm, total_fob, total_freight, total_taxes
-    } = req.body;
-
-    const current = db.prepare('SELECT * FROM containers WHERE id = ?').get(id);
-    if (!current) return res.status(404).json({ success: false, error: 'Contenedor no encontrado' });
-
-    db.prepare(`
-      UPDATE containers SET
-        tracking_number = ?,
-        origin_country = ?,
-        shipping_line = ?,
-        status = ?,
-        departure_date = ?,
-        estimated_arrival = ?,
-        actual_arrival = ?,
-        notes = ?,
-        transport_type = ?,
-        truck_plate = ?,
-        truck_driver = ?,
-        port_name = ?,
-        port_arrival_date = ?,
-        warehouse_arrival_date = ?,
-        total_cbm = ?,
-        total_fob = ?,
-        total_freight = ?,
-        total_taxes = ?
-      WHERE id = ?
-    `).run(
-      tracking_number ?? current.tracking_number,
-      origin_country ?? current.origin_country,
-      shipping_line ?? current.shipping_line,
-      status ?? current.status,
-      departure_date !== undefined ? departure_date : current.departure_date,
-      estimated_arrival !== undefined ? estimated_arrival : current.estimated_arrival,
-      actual_arrival !== undefined ? actual_arrival : current.actual_arrival,
-      notes !== undefined ? notes : current.notes,
-      transport_type ?? current.transport_type,
-      truck_plate !== undefined ? truck_plate : current.truck_plate,
-      truck_driver !== undefined ? truck_driver : current.truck_driver,
-      port_name ?? current.port_name,
-      port_arrival_date !== undefined ? port_arrival_date : current.port_arrival_date,
-      warehouse_arrival_date !== undefined ? warehouse_arrival_date : current.warehouse_arrival_date,
-      total_cbm ?? current.total_cbm,
-      total_fob ?? current.total_fob,
-      total_freight ?? current.total_freight,
-      total_taxes ?? current.total_taxes,
-      id
-    );
-
-    const updated = db.prepare('SELECT * FROM containers WHERE id = ?').get(id);
-    res.json({ success: true, data: updated });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// DELETE container
-app.delete('/api/containers/:id', (req, res) => {
-  try {
-    const container = db.prepare('SELECT id FROM containers WHERE id = ?').get(req.params.id);
-    if (!container) return res.status(404).json({ success: false, error: 'Contenedor no encontrado' });
-    db.prepare('DELETE FROM containers WHERE id = ?').run(req.params.id);
-    res.json({ success: true, message: 'Contenedor eliminado' });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// GET container items + reservations
-app.get('/api/containers/:id/items', (req, res) => {
-  try {
-    const items = db.prepare(`
-      SELECT ci.*,
-        COALESCE(SUM(cr.reserved_boxes), 0) AS live_reserved_boxes
-      FROM container_items ci
-      LEFT JOIN container_reservations cr ON cr.container_item_id = ci.id AND cr.status != 'CANCELADO'
-      WHERE ci.container_id = ?
-      GROUP BY ci.id
-      ORDER BY ci.item_number ASC, ci.id ASC
-    `).all(req.params.id);
-
-    const reservations = db.prepare(`
-      SELECT cr.*, ci.product_code, ci.product_name
-      FROM container_reservations cr
-      JOIN container_items ci ON ci.id = cr.container_item_id
-      WHERE cr.container_id = ?
-      ORDER BY cr.created_at DESC
-    `).all(req.params.id);
-
-    res.json({ success: true, items, reservations });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// POST bulk upload prelista items (replaces existing if replaceExisting=true)
-app.post('/api/containers/:id/items/bulk', (req, res) => {
-  try {
-    const containerId = req.params.id;
-    const { items, replaceExisting } = req.body;
-
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ success: false, error: 'Se requiere un array de items' });
-    }
-
-    const container = db.prepare('SELECT id FROM containers WHERE id = ?').get(containerId);
-    if (!container) return res.status(404).json({ success: false, error: 'Contenedor no encontrado' });
-
-    const confirmedDate = new Date().toISOString();
-
-    const tx = db.transaction(() => {
-      if (replaceExisting) {
-        db.prepare('DELETE FROM container_reservations WHERE container_id = ?').run(containerId);
-        db.prepare('DELETE FROM container_items WHERE container_id = ?').run(containerId);
-      }
-
-      const insert = db.prepare(`
-        INSERT INTO container_items (
-          container_id, item_number, product_code, product_name,
-          boxes_count, units_per_box, total_units, unit_measure,
-          unit_cost, previous_cost, margin_percent,
-          price_mayor, price_caja, price_special,
-          price_discount_25, price_adjustment_20,
-          reserved_boxes, notes, order_confirmed_date
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-
-      for (const it of items) {
-        insert.run(
-          containerId,
-          it.num || null,
-          (it.code || '').toString().trim().toUpperCase(),
-          (it.name || '').toString().trim(),
-          Number(it.boxes) || 0,
-          Number(it.perBox) || 1,
-          Number(it.totalUnits) || (Number(it.boxes) * Number(it.perBox)) || 0,
-          it.measure || 'UNI',
-          Number(it.cost) || 0,
-          Number(it.previousCost) || 0,
-          Number(it.margin) || 0,
-          Number(it.priceMayor) || 0,
-          Number(it.priceCaja) || 0,
-          Number(it.priceSpecial) || 0,
-          Number(it.priceDesc25) || 0,
-          Number(it.priceAjuste20) || 0,
-          Number(it.reserved) || 0,
-          it.notes || null,
-          confirmedDate
-        );
-      }
-    });
-
-    tx();
-    const savedItems = db.prepare('SELECT COUNT(*) as c FROM container_items WHERE container_id = ?').get(containerId);
-    res.json({ success: true, message: `${savedItems.c} productos guardados en la prelista.`, count: savedItems.c, order_confirmed_date: confirmedDate });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -3802,39 +4187,43 @@ app.delete('/api/containers/items/:itemId', (req, res) => {
 });
 
 // =============================================================================
-// USERS & ROLES MANAGEMENT (Gestión de Trabajadores y Roles)
+// USERS & ROLES MANAGEMENT (Gestión Segura de Trabajadores y Roles)
 // =============================================================================
 
-// GET all users
-app.get('/api/users', (req, res) => {
+// GET all users (SUPER_ADMIN / ADMIN only — NEVER returns pin_code)
+app.get('/api/users', requireRoles('SUPER_ADMIN', 'ADMIN'), (req, res) => {
   try {
     const users = db.prepare(`
-      SELECT id, name, username, pin_code, role, phone, email, avatar_color, avatar_url, status, notes, created_at, updated_at
+      SELECT id, name, username, role, phone, email, avatar_color, avatar_url, status, notes, created_at, updated_at
       FROM users
       ORDER BY id ASC
     `).all();
-    res.json({ success: true, data: users });
+    res.json({ success: true, data: users.map(u => ({ ...u, has_pin: true })) });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// GET single user
+// GET single user (SUPER_ADMIN / ADMIN or self — NEVER returns pin_code)
 app.get('/api/users/:id', (req, res) => {
   try {
+    const isAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(req.user.role);
+    if (!isAdmin && String(req.user.id) !== String(req.params.id)) {
+      return res.status(403).json({ success: false, error: 'No tienes permiso para ver este perfil de usuario' });
+    }
     const user = db.prepare(`
-      SELECT id, name, username, pin_code, role, phone, email, avatar_color, avatar_url, status, notes, created_at
+      SELECT id, name, username, role, phone, email, avatar_color, avatar_url, status, notes, created_at
       FROM users WHERE id = ?
     `).get(req.params.id);
     if (!user) return res.status(404).json({ success: false, error: 'Usuario no encontrado' });
-    res.json({ success: true, data: user });
+    res.json({ success: true, data: { ...user, has_pin: true } });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// POST create user
-app.post('/api/users', (req, res) => {
+// POST create user (SUPER_ADMIN only — PIN stored as salted scrypt hash)
+app.post('/api/users', requireRoles('SUPER_ADMIN'), (req, res) => {
   try {
     const { name, username, pin_code, role, phone, email, avatar_color, status, notes } = req.body;
     
@@ -3855,7 +4244,11 @@ app.post('/api/users', (req, res) => {
 
     const validRoles = ['SUPER_ADMIN', 'ADMIN', 'VENTAS', 'ALMACEN', 'CAJA'];
     const cleanRole = validRoles.includes(role) ? role : 'VENTAS';
-    const cleanPin = pin_code && String(pin_code).trim() ? String(pin_code).trim() : '1234';
+    const rawPin = pin_code && String(pin_code).trim() ? String(pin_code).trim() : '1234';
+    if (rawPin.length < 4) {
+      return res.status(400).json({ success: false, error: 'El PIN/contraseña debe tener al menos 4 caracteres' });
+    }
+    const hashedPin = hashPin(rawPin);
     const cleanStatus = status === 'INACTIVO' ? 'INACTIVO' : 'ACTIVO';
     const cleanColor = avatar_color || '#EA580C';
 
@@ -3865,7 +4258,7 @@ app.post('/api/users', (req, res) => {
     `).run(
       name.trim(),
       cleanUsername,
-      cleanPin,
+      hashedPin,
       cleanRole,
       phone ? phone.trim() : null,
       email ? email.trim() : null,
@@ -3875,20 +4268,38 @@ app.post('/api/users', (req, res) => {
     );
 
     const newUser = db.prepare('SELECT * FROM users WHERE id = ?').get(result.lastInsertRowid);
-    res.json({ success: true, data: newUser, message: `Usuario ${newUser.name} creado exitosamente` });
+    logSecurityEvent(db, {
+      action: 'USER_CREATED',
+      actorUser: req.user,
+      target: cleanUsername,
+      ip: getClientIp(req),
+      details: { role: cleanRole }
+    });
+    res.json({ success: true, data: sanitizeUserForClient(newUser), message: `Usuario ${newUser.name} creado exitosamente` });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// PUT update user
+// PUT update user (SUPER_ADMIN edits anyone; other roles can ONLY edit their own profile without changing role/status)
 app.put('/api/users/:id', (req, res) => {
   try {
     const { id } = req.params;
     const { name, username, pin_code, role, phone, email, avatar_color, avatar_url, status, notes } = req.body;
 
+    const isSuperAdmin = req.user.role === 'SUPER_ADMIN';
+    const isSelf = String(req.user.id) === String(id);
+
+    if (!isSuperAdmin && !isSelf) {
+      return res.status(403).json({ success: false, error: 'Solo puedes modificar tu propio perfil de usuario' });
+    }
+
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
     if (!user) return res.status(404).json({ success: false, error: 'Usuario no encontrado' });
+
+    // Prevent non-SuperAdmin privilege escalation
+    const nextRole = isSuperAdmin && role ? role : user.role;
+    const nextStatus = isSuperAdmin && status ? status : user.status;
 
     if (username && username.trim().toLowerCase() !== user.username.toLowerCase()) {
       const existing = db.prepare('SELECT id FROM users WHERE LOWER(username) = ? AND id != ?').get(username.trim().toLowerCase(), id);
@@ -3898,54 +4309,75 @@ app.put('/api/users/:id', (req, res) => {
     }
 
     // Protect last active super admin from being set inactive or downgraded
-    if (user.role === 'SUPER_ADMIN' && (status === 'INACTIVO' || (role && role !== 'SUPER_ADMIN'))) {
+    if (user.role === 'SUPER_ADMIN' && (nextStatus === 'INACTIVO' || nextRole !== 'SUPER_ADMIN')) {
       const activeSuperCount = db.prepare("SELECT COUNT(*) as c FROM users WHERE role = 'SUPER_ADMIN' AND status = 'ACTIVO' AND id != ?").get(id).c;
       if (activeSuperCount === 0) {
         return res.status(400).json({ success: false, error: 'No puedes desactivar ni degradar al único Super Administrador activo del sistema' });
       }
     }
 
+    // Hash new PIN only if provided and non-empty
+    let nextPinHash = user.pin_code;
+    if (pin_code && String(pin_code).trim().length > 0) {
+      const rawPin = String(pin_code).trim();
+      if (rawPin.length < 4) {
+        return res.status(400).json({ success: false, error: 'El nuevo PIN/contraseña debe tener al menos 4 caracteres' });
+      }
+      nextPinHash = hashPin(rawPin);
+    }
+
     db.prepare(`
       UPDATE users SET
         name = COALESCE(?, name),
         username = COALESCE(?, username),
-        pin_code = COALESCE(?, pin_code),
-        role = COALESCE(?, role),
-        phone = COALESCE(?, phone),
-        email = COALESCE(?, email),
+        pin_code = ?,
+        role = ?,
+        phone = ?,
+        email = ?,
         avatar_color = COALESCE(?, avatar_color),
         avatar_url = ?,
-        status = COALESCE(?, status),
-        notes = COALESCE(?, notes),
+        status = ?,
+        notes = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(
       name ? name.trim() : user.name,
       username ? username.trim().toLowerCase() : user.username,
-      pin_code ? String(pin_code).trim() : user.pin_code,
-      role || user.role,
+      nextPinHash,
+      nextRole,
       phone !== undefined ? phone : user.phone,
       email !== undefined ? email : user.email,
       avatar_color || user.avatar_color,
       avatar_url !== undefined ? avatar_url : user.avatar_url,
-      status || user.status,
+      nextStatus,
       notes !== undefined ? notes : user.notes,
       id
     );
 
     const updated = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
-    res.json({ success: true, data: updated, message: `Usuario ${updated.name} actualizado` });
+    logSecurityEvent(db, {
+      action: 'USER_UPDATED',
+      actorUser: req.user,
+      target: updated.username,
+      ip: getClientIp(req),
+      details: { pinChanged: Boolean(pin_code && String(pin_code).trim()), role: updated.role, status: updated.status }
+    });
+    res.json({ success: true, data: sanitizeUserForClient(updated), message: `Usuario ${updated.name} actualizado` });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// DELETE user
-app.delete('/api/users/:id', (req, res) => {
+// DELETE user (SUPER_ADMIN only)
+app.delete('/api/users/:id', requireRoles('SUPER_ADMIN'), (req, res) => {
   try {
     const { id } = req.params;
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
     if (!user) return res.status(404).json({ success: false, error: 'Usuario no encontrado' });
+
+    if (String(req.user.id) === String(id)) {
+      return res.status(400).json({ success: false, error: 'No puedes eliminar tu propia cuenta mientras tienes sesión activa' });
+    }
 
     // Protect last active super admin
     if (user.role === 'SUPER_ADMIN') {
@@ -3956,50 +4388,116 @@ app.delete('/api/users/:id', (req, res) => {
     }
 
     db.prepare('DELETE FROM users WHERE id = ?').run(id);
+    logSecurityEvent(db, {
+      action: 'USER_DELETED',
+      actorUser: req.user,
+      target: user.username,
+      ip: getClientIp(req),
+      details: { deletedName: user.name, deletedRole: user.role }
+    });
     res.json({ success: true, message: `Usuario ${user.name} eliminado` });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// POST login / switch user verification
+// POST impersonate / switch active profile (SUPER_ADMIN only — issues signed JWT for target user)
+app.post('/api/users/impersonate', requireRoles('SUPER_ADMIN'), (req, res) => {
+  try {
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ success: false, error: 'userId es requerido' });
+
+    const targetUser = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+    if (!targetUser) return res.status(404).json({ success: false, error: 'Usuario no encontrado' });
+    if (targetUser.status !== 'ACTIVO') {
+      return res.status(403).json({ success: false, error: 'No se puede cambiar a una cuenta inactiva' });
+    }
+
+    const token = signToken(targetUser);
+    logSecurityEvent(db, {
+      action: 'USER_IMPERSONATED',
+      actorUser: req.user,
+      target: targetUser.username,
+      ip: getClientIp(req),
+      details: { targetRole: targetUser.role }
+    });
+
+    res.json({
+      success: true,
+      token,
+      data: sanitizeUserForClient(targetUser),
+      message: `Sesión cambiada a ${targetUser.name}`
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST login (Public — protected by Brute-Force Rate Limiter + Scrypt Hash + HS256 JWT)
 app.post('/api/users/login', (req, res) => {
   try {
     const { userId, username, pin_code } = req.body;
-    let user = null;
+    const rateKey = username ? String(username).trim().toLowerCase() : `id_${userId || 'unknown'}`;
+    const ip = getClientIp(req);
 
+    // 1. Check Brute-Force Lockout
+    const limitStatus = checkLoginRateLimit(req, rateKey);
+    if (limitStatus.blocked) {
+      logSecurityEvent(db, {
+        action: 'LOGIN_LOCKED',
+        target: rateKey,
+        ip,
+        details: { retryAfterMinutes: limitStatus.retryAfterMinutes }
+      });
+      return res.status(429).json({
+        success: false,
+        error: limitStatus.message
+      });
+    }
+
+    let user = null;
     if (userId) {
       user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
     } else if (username) {
       user = db.prepare('SELECT * FROM users WHERE LOWER(username) = ?').get(String(username).trim().toLowerCase());
     }
 
-    if (!user) {
-      return res.status(404).json({ success: false, error: 'Usuario no encontrado en el sistema' });
+    // Use uniform failure tracking to prevent user enumeration & brute force
+    if (!user || !verifyPin(pin_code, user.pin_code)) {
+      const fail = recordLoginFailure(req, rateKey);
+      logSecurityEvent(db, {
+        action: 'LOGIN_FAILED',
+        target: rateKey,
+        ip,
+        details: { remainingAttempts: fail.remaining, locked: fail.locked }
+      });
+
+      const msg = fail.locked
+        ? 'Demasiados intentos fallidos. Cuenta bloqueada por 10 minutos por seguridad.'
+        : `Usuario o PIN incorrecto. Te quedan ${fail.remaining} intento(s) antes del bloqueo temporal.`;
+
+      return res.status(fail.locked ? 429 : 401).json({ success: false, error: msg });
     }
 
     if (user.status !== 'ACTIVO') {
       return res.status(403).json({ success: false, error: 'Esta cuenta de usuario se encuentra inactiva' });
     }
 
-    // Require and verify 4-digit PIN
-    if (!pin_code || String(pin_code).trim() !== String(user.pin_code)) {
-      return res.status(401).json({ success: false, error: 'Código PIN incorrecto. Inténtalo de nuevo.' });
-    }
+    // Success: reset failure counter and issue signed HS256 JWT
+    resetLoginFailures(req, rateKey);
+    const token = signToken(user);
+
+    logSecurityEvent(db, {
+      action: 'LOGIN_SUCCESS',
+      actorUser: user,
+      target: user.username,
+      ip
+    });
 
     res.json({ 
       success: true, 
-      data: {
-        id: user.id,
-        name: user.name,
-        username: user.username,
-        role: user.role,
-        avatar_color: user.avatar_color,
-        avatar_url: user.avatar_url,
-        phone: user.phone,
-        email: user.email,
-        status: user.status
-      },
+      token,
+      data: sanitizeUserForClient(user),
       message: `¡Bienvenido al sistema, ${user.name}!` 
     });
   } catch (err) {
@@ -4008,8 +4506,265 @@ app.post('/api/users/login', (req, res) => {
 });
 
 // =============================================================================
+// CASH CLOSING & DAILY EXPENSES (Cierre de Caja Diario + Gastos / Caja Chica)
+// =============================================================================
+app.get('/api/cash-closing', (req, res) => {
+  try {
+    const targetDate = (req.query.date && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date))
+      ? req.query.date
+      : new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0];
 
-app.listen(PORT, () => {
-  console.log(`🚀 SISCONTROL API Server running on http://localhost:${PORT}`);
+    const rawPayments = db.prepare(`
+      SELECT
+        p.id,
+        p.note_id,
+        p.amount,
+        p.payment_method,
+        p.account_info,
+        p.payment_date,
+        p.registered_by,
+        p.created_at,
+        sn.note_code,
+        sn.customer_name
+      FROM sales_note_payments p
+      JOIN sales_notes sn ON sn.id = p.note_id
+      WHERE sn.status NOT IN ('ANULADO', 'PRE-RESERVA')
+        AND (
+          substr(p.payment_date, 1, 10) = ?
+          OR (p.payment_date IS NULL AND substr(p.created_at, 1, 10) = ?)
+        )
+      ORDER BY p.id DESC
+    `).all(targetDate, targetDate);
+
+    let totalCash = 0;
+    let totalQr = 0;
+    let qrJaime = 0;
+    let qrBetho = 0;
+    let totalDiscount = 0;
+
+    const payments = rawPayments.map((p) => {
+      const amt = Number(p.amount || 0);
+      const method = String(p.payment_method || '').toUpperCase();
+      const acc = String(p.account_info || '').toUpperCase();
+
+      let amount_cash = 0;
+      let amount_qr = 0;
+      let amount_discount = 0;
+      let qr_account = '';
+
+      if (method.includes('REBAJA') || method.includes('DESCUENTO')) {
+        amount_discount = amt;
+        totalDiscount += amt;
+      } else if (
+        method.includes('QR') ||
+        method.includes('TRANSFERENCIA') ||
+        method.includes('DEP') ||
+        method.includes('BANCARIO')
+      ) {
+        amount_qr = amt;
+        totalQr += amt;
+        if (method.includes('BET') || acc.includes('BET')) {
+          qrBetho += amt;
+          qr_account = 'CUENTA BETHO';
+        } else {
+          qrJaime += amt;
+          qr_account = 'CUENTA JAIME';
+        }
+      } else {
+        amount_cash = amt;
+        totalCash += amt;
+      }
+
+      return {
+        ...p,
+        amount_cash,
+        amount_qr,
+        amount_discount,
+        qr_account,
+        notes: p.account_info || ''
+      };
+    });
+
+    const expenses = db.prepare(`
+      SELECT id, category, description, amount, date, registered_by, created_at
+      FROM expenses
+      WHERE substr(date, 1, 10) = ?
+      ORDER BY id DESC
+    `).all(targetDate);
+
+    const totalExpenses = expenses.reduce((acc, e) => acc + Number(e.amount || 0), 0);
+    const totalCollected = totalCash + totalQr;
+    const netCashInHand = totalCash - totalExpenses;
+
+    res.json({
+      success: true,
+      data: {
+        date: targetDate,
+        summary: {
+          total_cash: Number(totalCash.toFixed(2)),
+          total_qr: Number(totalQr.toFixed(2)),
+          qr_jaime: Number(qrJaime.toFixed(2)),
+          qr_betho: Number(qrBetho.toFixed(2)),
+          total_discount: Number(totalDiscount.toFixed(2)),
+          total_collected: Number(totalCollected.toFixed(2)),
+          total_expenses: Number(totalExpenses.toFixed(2)),
+          net_cash_in_hand: Number(netCashInHand.toFixed(2)),
+          payments_count: payments.length,
+          expenses_count: expenses.length
+        },
+        payments,
+        expenses
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/expenses', (req, res) => {
+  try {
+    const { date } = req.query;
+    const rows = date
+      ? db.prepare('SELECT * FROM expenses WHERE substr(date, 1, 10) = ? ORDER BY id DESC').all(date)
+      : db.prepare('SELECT * FROM expenses ORDER BY date DESC, id DESC LIMIT 200').all();
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/expenses', (req, res) => {
+  try {
+    const { category, description, amount, date } = req.body;
+    const numAmount = Number(amount);
+    if (!description || !description.trim()) {
+      return res.status(400).json({ success: false, error: 'La descripción del gasto es obligatoria' });
+    }
+    if (!Number.isFinite(numAmount) || numAmount <= 0) {
+      return res.status(400).json({ success: false, error: 'El monto del gasto debe ser mayor a 0' });
+    }
+
+    const cleanDate = (date && /^\d{4}-\d{2}-\d{2}$/.test(date))
+      ? date
+      : new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0];
+
+    const registeredBy = req.user?.name || req.user?.username || 'USUARIO';
+
+    const result = db.prepare(`
+      INSERT INTO expenses (category, description, amount, date, registered_by)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(
+      (category || 'Varios').trim(),
+      description.trim(),
+      numAmount,
+      cleanDate,
+      registeredBy
+    );
+
+    const created = db.prepare('SELECT * FROM expenses WHERE id = ?').get(result.lastInsertRowid);
+    logSecurityEvent(db, {
+      action: 'EXPENSE_CREATED',
+      actorUser: req.user,
+      target: `expense:${created.id}`,
+      ip: getClientIp(req),
+      details: { category: created.category, amount: created.amount, date: created.date }
+    });
+
+    res.json({ success: true, data: created, message: 'Gasto registrado correctamente' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/expenses/:id', (req, res) => {
+  try {
+    const exp = db.prepare('SELECT * FROM expenses WHERE id = ?').get(req.params.id);
+    if (!exp) return res.status(404).json({ success: false, error: 'Gasto no encontrado' });
+
+    const isAdmin = ['SUPER_ADMIN', 'ADMIN', 'CAJA'].includes(req.user.role);
+    const isOwner = exp.registered_by && (exp.registered_by === req.user.name || exp.registered_by === req.user.username);
+    if (!isAdmin && !isOwner) {
+      return res.status(403).json({ success: false, error: 'No tienes permiso para eliminar este gasto' });
+    }
+
+    db.prepare('DELETE FROM expenses WHERE id = ?').run(req.params.id);
+    logSecurityEvent(db, {
+      action: 'EXPENSE_DELETED',
+      actorUser: req.user,
+      target: `expense:${req.params.id}`,
+      ip: getClientIp(req),
+      details: { description: exp.description, amount: exp.amount }
+    });
+
+    res.json({ success: true, message: 'Gasto eliminado' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// =============================================================================
+// SYSTEM SECURITY: BACKUPS & AUDIT LOGS (SUPER_ADMIN / ADMIN only)
+// =============================================================================
+app.get('/api/system/backups', requireRoles('SUPER_ADMIN', 'ADMIN'), (req, res) => {
+  try {
+    const backups = listDatabaseBackups();
+    res.json({ success: true, data: backups });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/system/backup', requireRoles('SUPER_ADMIN', 'ADMIN'), async (req, res) => {
+  try {
+    const info = await createDatabaseBackup(db, 'manual');
+    logSecurityEvent(db, {
+      action: 'BACKUP_CREATED',
+      actorUser: req.user,
+      target: info.filename,
+      ip: getClientIp(req),
+      details: { size_kb: info.size_kb }
+    });
+    res.json({ success: true, data: info, message: `Respaldo ${info.filename} generado con éxito (${info.size_kb} KB)` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/system/audit-logs', requireRoles('SUPER_ADMIN', 'ADMIN'), (req, res) => {
+  try {
+    const limit = Math.min(200, Math.max(10, parseInt(req.query.limit || '100', 10)));
+    const logs = db.prepare(`
+      SELECT * FROM security_audit_logs
+      ORDER BY id DESC
+      LIMIT ?
+    `).all(limit);
+    res.json({ success: true, data: logs });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// =============================================================================
+// UNIFIED PRODUCTION FRONTEND SERVING (Express serves Vite build from ../dist)
+// =============================================================================
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const distDir = path.join(__dirname, '..', 'dist');
+const distIndex = path.join(distDir, 'index.html');
+
+if (fs.existsSync(distIndex)) {
+  app.use(express.static(distDir, { maxAge: '1h' }));
+  app.get(/^(?!\/api(?:\/|$)).*/, (req, res) => {
+    res.sendFile(distIndex);
+  });
+}
+
+// =============================================================================
+
+app.listen(PORT, '0.0.0.0', () => {
+  const modeMsg = fs.existsSync(distIndex)
+    ? `App + API unificados en http://localhost:${PORT}`
+    : `API en http://localhost:${PORT}`;
+  console.log(`🚀 SISCONTROL Server activo: ${modeMsg} (JWT + Scrypt + RateLimit + Backups)`);
 });
 

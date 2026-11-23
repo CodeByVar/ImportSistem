@@ -72,15 +72,18 @@ export default function UsersModal({
   const [isLoading, setIsLoading] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingUserId, setEditingUserId] = useState(null);
-  const [visiblePins, setVisiblePins] = useState({});
   const [toast, setToast] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [backups, setBackups] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [isCreatingBackup, setIsCreatingBackup] = useState(false);
+  const [showAuditLogs, setShowAuditLogs] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
     name: '',
     username: '',
-    pin_code: '1234',
+    pin_code: '',
     role: 'VENTAS',
     phone: '',
     avatar_color: '#EA580C',
@@ -88,18 +91,45 @@ export default function UsersModal({
     notes: ''
   });
 
-  // Fetch users
+  // Fetch users + backups + audit logs
   const fetchUsers = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/users').then(r => r.json());
-      if (res.success && res.data) {
-        setUsers(res.data);
+      const [usersRes, backupsRes, logsRes] = await Promise.all([
+        fetch('/api/users').then(r => r.json()),
+        fetch('/api/system/backups').then(r => r.json()).catch(() => ({ success: false })),
+        fetch('/api/system/audit-logs?limit=25').then(r => r.json()).catch(() => ({ success: false }))
+      ]);
+      if (usersRes.success && usersRes.data) {
+        setUsers(usersRes.data);
+      }
+      if (backupsRes.success && backupsRes.data) {
+        setBackups(backupsRes.data);
+      }
+      if (logsRes.success && logsRes.data) {
+        setAuditLogs(logsRes.data);
       }
     } catch (err) {
       console.error('Error fetching users:', err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleCreateBackupNow = async () => {
+    setIsCreatingBackup(true);
+    try {
+      const res = await fetch('/api/system/backup', { method: 'POST' }).then(r => r.json());
+      if (res.success) {
+        showNotification(res.message || 'Respaldo creado correctamente');
+        fetchUsers();
+      } else {
+        setErrorMsg(res.error || 'No se pudo generar el respaldo');
+      }
+    } catch (err) {
+      setErrorMsg(err.message);
+    } finally {
+      setIsCreatingBackup(false);
     }
   };
 
@@ -121,7 +151,7 @@ export default function UsersModal({
     setFormData({
       name: '',
       username: '',
-      pin_code: '1234',
+      pin_code: '',
       role: 'VENTAS',
       phone: '',
       avatar_color: '#EA580C',
@@ -138,7 +168,7 @@ export default function UsersModal({
     setFormData({
       name: user.name || '',
       username: user.username || '',
-      pin_code: user.pin_code || '1234',
+      pin_code: '', // Vacío = conservar PIN cifrado actual
       role: user.role || 'VENTAS',
       phone: user.phone || '',
       avatar_color: user.avatar_color || '#EA580C',
@@ -155,15 +185,24 @@ export default function UsersModal({
       setErrorMsg('Nombre completo y usuario son obligatorios');
       return;
     }
+    if (!editingUserId && (!formData.pin_code || formData.pin_code.trim().length < 4)) {
+      setErrorMsg('El PIN inicial debe tener al menos 4 dígitos/caracteres');
+      return;
+    }
 
     try {
       const url = editingUserId ? `/api/users/${editingUserId}` : '/api/users';
       const method = editingUserId ? 'PUT' : 'POST';
 
+      const payload = { ...formData };
+      if (editingUserId && !payload.pin_code?.trim()) {
+        delete payload.pin_code; // Mantener el hash scrypt actual
+      }
+
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(payload)
       }).then(r => r.json());
 
       if (res.success) {
@@ -194,13 +233,6 @@ export default function UsersModal({
     } catch (err) {
       alert(err.message);
     }
-  };
-
-  const togglePinVisibility = (userId) => {
-    setVisiblePins(prev => ({
-      ...prev,
-      [userId]: !prev[userId]
-    }));
   };
 
   if (!isOpen) return null;
@@ -500,13 +532,13 @@ export default function UsersModal({
                 {/* Código PIN */}
                 <div>
                   <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
-                    PIN DE ACCESO (4 dígitos) *
+                    {editingUserId ? 'NUEVO PIN (opcional — vacío mantiene el actual)' : 'PIN DE ACCESO (mín. 4 dígitos) *'}
                   </label>
                   <input
-                    type="text"
-                    required
-                    maxLength={8}
-                    placeholder="1234"
+                    type="password"
+                    required={!editingUserId}
+                    maxLength={16}
+                    placeholder={editingUserId ? '•••• (Sin cambios)' : 'Ej. 4829'}
                     value={formData.pin_code}
                     onChange={e => setFormData({ ...formData, pin_code: e.target.value })}
                     className="mono"
@@ -666,7 +698,6 @@ export default function UsersModal({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {users.map((user) => {
                 const roleInfo = ROLES_INFO[user.role] || ROLES_INFO.VENTAS;
-                const isPinVisible = visiblePins[user.id];
                 const isCurrent = currentUser?.id === user.id;
 
                 return (
@@ -723,16 +754,9 @@ export default function UsersModal({
                           {user.phone && (
                             <span>Tel: <strong>{user.phone}</strong></span>
                           )}
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            PIN: <strong className="mono">{isPinVisible ? user.pin_code : '••••'}</strong>
-                            <button
-                              type="button"
-                              onClick={() => togglePinVisibility(user.id)}
-                              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 0 }}
-                              title={isPinVisible ? 'Ocultar PIN' : 'Ver PIN'}
-                            >
-                              {isPinVisible ? <EyeOff size={12} /> : <Eye size={12} />}
-                            </button>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#10b981', fontWeight: 700 }}>
+                            <Lock size={11} />
+                            <span>PIN Cifrado</span>
                           </span>
                         </div>
                       </div>
@@ -821,6 +845,101 @@ export default function UsersModal({
                 );
               })}
             </div>
+          </div>
+
+          {/* Security & Automatic SQLite Backups Card */}
+          <div style={{
+            background: 'rgba(16, 185, 129, 0.05)',
+            border: '1px solid rgba(16, 185, 129, 0.25)',
+            borderRadius: '14px',
+            padding: '14px 16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <ShieldCheck size={16} color="#10b981" />
+                <div>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--text-main)' }}>
+                    Protección Activa & Respaldos Automáticos ({backups.length})
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                    {backups[0]
+                      ? `Último respaldo: ${backups[0].filename} (${backups[0].size_kb} KB)`
+                      : 'Respaldos programados cada 6 horas en server/data/backups'}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowAuditLogs(prev => !prev)}
+                  className="btn"
+                  style={{
+                    padding: '6px 12px',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-glass)',
+                    background: 'var(--bg-dark-card)',
+                    color: 'var(--text-main)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {showAuditLogs ? 'Ocultar Auditoría' : `Auditoría (${auditLogs.length})`}
+                </button>
+                <button
+                  type="button"
+                  disabled={isCreatingBackup}
+                  onClick={handleCreateBackupNow}
+                  className="btn"
+                  style={{
+                    padding: '6px 12px',
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: '#10b981',
+                    color: '#ffffff',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {isCreatingBackup ? 'Respaldando...' : 'Crear Respaldo Ahora'}
+                </button>
+              </div>
+            </div>
+
+            {showAuditLogs && (
+              <div style={{
+                maxHeight: '160px',
+                overflowY: 'auto',
+                borderTop: '1px solid rgba(16, 185, 129, 0.2)',
+                paddingTop: '8px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+                fontSize: '0.7rem'
+              }}>
+                {auditLogs.length === 0 ? (
+                  <span style={{ color: 'var(--text-muted)' }}>Sin eventos registrados todavía.</span>
+                ) : (
+                  auditLogs.map(log => (
+                    <div key={log.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', color: 'var(--text-muted)' }}>
+                      <span>
+                        <strong style={{ color: log.action.includes('FAIL') || log.action.includes('LOCK') ? '#fb7185' : 'var(--text-main)' }}>
+                          {log.action}
+                        </strong>
+                        {' '}— {log.actor_username || log.target || 'sistema'}
+                        {log.target && log.actor_username && log.target !== log.actor_username ? ` → ${log.target}` : ''}
+                      </span>
+                      <span className="mono" style={{ flexShrink: 0 }}>{String(log.created_at || '').slice(0, 19)}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
           </div>
 
         </div>

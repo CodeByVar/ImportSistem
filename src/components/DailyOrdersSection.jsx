@@ -24,7 +24,8 @@ import {
   Sun,
   Sunset,
   Pencil,
-  Phone
+  Phone,
+  Store
 } from 'lucide-react';
 import DeliveryConfirmModal from './DeliveryConfirmModal';
 
@@ -136,6 +137,7 @@ export default function DailyOrdersSection({
   onOpenPrintNote, 
   onOpenEditNote, 
   onOpenNewNote, 
+  onOpenNewRestock,
   onOpenAddPayment, 
   onNavigateToContainers,
   onNavigateToWeekly,
@@ -152,6 +154,33 @@ export default function DailyOrdersSection({
   });
   const [supervisor, setSupervisor] = useState(() => getActiveSessionUserName());
   const [deliveryModalRow, setDeliveryModalRow] = useState(null);
+
+  const handleConfirmRestock = async (row) => {
+    if (!row?.sales_note_id) return;
+    const ok = window.confirm(
+      `¿Confirmar que el pedido de reposición ${row.sales_note_code || ''} (${row.note_total_boxes || 0} cajas / ${row.note_total_units || 0} u.) ya llegó físicamente a la Tienda?`
+    );
+    if (!ok) return;
+
+    try {
+      const res = await fetch(`/api/sales-notes/${row.sales_note_id}/confirm-restock`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmed_by: getActiveSessionUserName() })
+      }).then(r => r.json());
+
+      if (res.success) {
+        setToast(res.message || 'Reposición confirmada como recibida en tienda.');
+        setTimeout(() => setToast(''), 4000);
+        fetchDayOrders();
+        onOrderDelivered && onOrderDelivered();
+      } else {
+        alert(res.error || 'No se pudo confirmar la reposición.');
+      }
+    } catch (err) {
+      alert('Error de conexión: ' + err.message);
+    }
+  };
 
   // Days dates mapping for current week offset
   const weekDays = useMemo(() => {
@@ -557,6 +586,17 @@ export default function DailyOrdersSection({
             )}
           </button>
 
+          {onOpenNewRestock && (
+            <button
+              onClick={onOpenNewRestock}
+              className="py-1.5 sm:py-2 px-3 sm:px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold inline-flex items-center justify-center gap-1.5 shadow-md shadow-indigo-900/25 flex-1 sm:flex-none cursor-pointer"
+              title="Pedir mercadería del almacén para llevar a la tienda (sin cobro, editable en curso)"
+            >
+              <Store size={14} />
+              <span>Reposición Tienda</span>
+            </button>
+          )}
+
           <button
             onClick={onOpenNewNote}
             className="btn btn-primary text-xs py-1.5 sm:py-2 px-3 sm:px-4 gap-1.5 font-bold shadow-md shadow-cyan-900/30 flex-1 sm:flex-none justify-center"
@@ -896,32 +936,56 @@ export default function DailyOrdersSection({
                           <option value="CANCELADO">CANCELADO</option>
                         </select>
 
-                        {/* Botón rápido para marcar ENTREGADO y liquidar si tiene nota y aún no está entregado */}
+                        {/* Botón rápido: Reposición a Tienda (sin cobro) vs Entrega de Venta (con cobro) */}
                         {row.sales_note_id && row.status !== 'ENTREGADO' && (
-                          <button
-                            type="button"
-                            onClick={() => setDeliveryModalRow(row)}
-                            className="btn btn-emerald"
-                            style={{
-                              padding: '3px 8px',
-                              fontSize: '0.68rem',
-                              fontWeight: 800,
-                              borderRadius: '6px',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              boxShadow: '0 0 10px rgba(16, 185, 129, 0.35)',
-                              cursor: 'pointer'
-                            }}
-                            title="Confirmar entrega de mercadería y liquidar cobro / deuda"
-                          >
-                            <Truck size={12} />
-                            <span>Entregar</span>
-                          </button>
+                          row.note_type === 'REPOSICION_TIENDA' || String(row.sales_note_code || '').startsWith('REP-') ? (
+                            <button
+                              type="button"
+                              onClick={() => handleConfirmRestock(row)}
+                              style={{
+                                padding: '3px 8px',
+                                fontSize: '0.68rem',
+                                fontWeight: 800,
+                                borderRadius: '6px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                background: '#4f46e5',
+                                color: '#ffffff',
+                                border: 'none',
+                                cursor: 'pointer'
+                              }}
+                              title="Confirmar recién cuando la mercadería llegue físicamente a la Tienda"
+                            >
+                              <PackageCheck size={12} />
+                              <span>Confirmar Tienda</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setDeliveryModalRow(row)}
+                              className="btn btn-emerald"
+                              style={{
+                                padding: '3px 8px',
+                                fontSize: '0.68rem',
+                                fontWeight: 800,
+                                borderRadius: '6px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                boxShadow: '0 0 10px rgba(16, 185, 129, 0.35)',
+                                cursor: 'pointer'
+                              }}
+                              title="Confirmar entrega de mercadería y liquidar cobro / deuda"
+                            >
+                              <Truck size={12} />
+                              <span>Entregar</span>
+                            </button>
+                          )
                         )}
                         {row.status === 'ENTREGADO' && (
                           <span style={{ fontSize: '0.65rem', color: '#34d399', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '3px' }}>
-                            <CheckCircle2 size={11} /> Entregado
+                            <CheckCircle2 size={11} /> {row.note_type === 'REPOSICION_TIENDA' ? 'En Tienda' : 'Entregado'}
                           </span>
                         )}
                       </div>
@@ -1114,17 +1178,22 @@ export default function DailyOrdersSection({
           </div>
         ) : (
           rows.map((row, index) => {
-            const acc = getAccountStatus(row);
-            const isDelivered = row.status === 'ENTREGADO';
+            const isRestockRow = row.note_type === 'REPOSICION_TIENDA' || String(row.sales_note_code || '').startsWith('REP-');
+            const acc = isRestockRow ? null : getAccountStatus(row);
+            const isDelivered = row.status === 'ENTREGADO' || row.note_status === 'RECIBIDO';
             const cleanCustomer = (row.activity_or_customer || '').replace(/\s*\([A-Za-z0-9_-]+\)\s*$/, '') || 'Cliente';
-            const hasBalance = Number(row.note_balance ?? 0) > 0 && row.note_status !== 'ANULADO';
+            const hasBalance = !isRestockRow && Number(row.note_balance ?? 0) > 0 && row.note_status !== 'ANULADO';
 
             return (
               <div 
                 key={index}
                 className="bg-white dark:bg-slate-900 border-2 rounded-2xl p-3.5 shadow-sm dark:shadow-md flex flex-col gap-3 transition-all relative overflow-hidden"
                 style={{
-                  borderColor: isDelivered ? 'rgba(16, 185, 129, 0.45)' : (acc ? acc.border : 'var(--border-glass)')
+                  borderColor: isDelivered
+                    ? 'rgba(16, 185, 129, 0.45)'
+                    : isRestockRow
+                      ? 'rgba(99, 102, 241, 0.5)'
+                      : (acc ? acc.border : 'var(--border-glass)')
                 }}
               >
                 {/* Top Bar: Row #, Customer Name, Note Code badge & Actions */}
@@ -1235,7 +1304,30 @@ export default function DailyOrdersSection({
                   </button>
                 </div>
 
-                {/* Financial Status Pill & Quick Collect Payment Button */}
+                {/* Restock Status Strip OR Financial Status Pill */}
+                {isRestockRow && (
+                  <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-indigo-50/80 dark:bg-indigo-500/15 border border-indigo-200 dark:border-indigo-500/40">
+                    <div className="flex items-center gap-1.5 text-xs font-extrabold text-indigo-700 dark:text-indigo-300 min-w-0">
+                      <Store size={14} className="shrink-0" />
+                      <span className="truncate">
+                        {isDelivered
+                          ? `RECIBIDO EN TIENDA${row.restock_confirmed_by ? ` (${row.restock_confirmed_by})` : ''}`
+                          : `REPOSICIÓN EN CURSO • ${row.note_total_boxes || 0} cj (${row.note_total_units || 0} u.)`}
+                      </span>
+                    </div>
+                    {!isDelivered && row.sales_note_id && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenSalesNote(row.sales_note_id)}
+                        className="py-1 px-2.5 rounded-lg bg-white dark:bg-slate-800 border border-indigo-300 dark:border-indigo-500/50 text-indigo-700 dark:text-indigo-300 font-extrabold text-[11px] flex items-center gap-1 shrink-0 cursor-pointer"
+                      >
+                        <Pencil size={11} />
+                        <span>Editar</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 {acc && (
                   <div className="flex items-center justify-between gap-2 p-2 rounded-xl border" style={{ background: acc.bg, borderColor: acc.border }}>
                     <div 
@@ -1289,22 +1381,37 @@ export default function DailyOrdersSection({
                     </select>
                   </div>
 
-                  {/* Big Touch Delivery Button (Solo vector, sin emoticón) */}
+                  {/* Big Touch Delivery / Restock Arrival Button */}
                   {row.sales_note_id && !isDelivered && (
-                    <button
-                      type="button"
-                      onClick={() => setDeliveryModalRow(row)}
-                      className="w-full py-3 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/20 active:scale-[0.98] transition-transform cursor-pointer"
-                    >
-                      <Truck size={18} />
-                      <span>Confirmar Entrega y Cobrar</span>
-                    </button>
+                    isRestockRow ? (
+                      <button
+                        type="button"
+                        onClick={() => handleConfirmRestock(row)}
+                        className="w-full py-3 px-3 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-indigo-950/20 active:scale-[0.98] transition-transform cursor-pointer"
+                      >
+                        <PackageCheck size={18} />
+                        <span>Confirmar Llegada a Tienda</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setDeliveryModalRow(row)}
+                        className="w-full py-3 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/20 active:scale-[0.98] transition-transform cursor-pointer"
+                      >
+                        <Truck size={18} />
+                        <span>Confirmar Entrega y Cobrar</span>
+                      </button>
+                    )
                   )}
 
                   {isDelivered && (
                     <div className="w-full py-2 px-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-300 dark:border-emerald-500/40 text-emerald-700 dark:text-emerald-400 font-extrabold text-xs flex items-center justify-center gap-2">
                       <CheckCircle2 size={16} />
-                      <span>¡Entrega Confirmada! (Stock descontado)</span>
+                      <span>
+                        {isRestockRow
+                          ? `Recibido en Tienda${row.restock_confirmed_by ? ` • Confirmó: ${row.restock_confirmed_by}` : ''}`
+                          : '¡Entrega Confirmada! (Stock descontado)'}
+                      </span>
                     </div>
                   )}
                 </div>
