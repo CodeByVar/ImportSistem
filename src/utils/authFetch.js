@@ -1,5 +1,8 @@
-// Global fetch wrapper that automatically injects JWT Bearer token on all /api/* requests
-// and gracefully handles 401 session expiration across the entire app.
+// Global fetch wrapper that automatically injects JWT Bearer token on all /api/* requests,
+// supports DEMO_MODE for frontend-only deploys (e.g. Vercel without backend),
+// and gracefully falls back to mock JSON data if an endpoint returns HTML instead of JSON.
+
+import { DEMO_MODE, handleDemoApiRequest } from '../config/demoMode';
 
 let isInstalled = false;
 
@@ -8,13 +11,6 @@ export function getAuthToken() {
     const raw = localStorage.getItem('siscontrol_auth_session');
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    // Clear any leftover temporary demo session token
-    if (parsed?.demoMode || parsed?.token === 'demo-jwt-token-importadora-rivero-2026') {
-      localStorage.removeItem('siscontrol_auth_session');
-      localStorage.removeItem('siscontrol_active_user');
-      localStorage.removeItem('siscontrol_demo_state_v1');
-      return null;
-    }
     return parsed?.token || null;
   } catch {
     return null;
@@ -24,9 +20,6 @@ export function getAuthToken() {
 export function setupAuthFetch() {
   if (isInstalled || typeof window === 'undefined' || !window.fetch) return;
   isInstalled = true;
-
-  // Purge any leftover demo session on startup
-  getAuthToken();
 
   const nativeFetch = window.fetch.bind(window);
 
@@ -41,13 +34,29 @@ export function setupAuthFetch() {
       urlStr.startsWith('/api/') ||
       urlStr.startsWith(`${window.location.origin}/api/`);
 
-    const isPublicLogin =
-      urlStr.includes('/api/users/login') ||
-      urlStr.includes('/api/health');
-
     if (!isApiCall) {
       return nativeFetch(input, init);
     }
+
+    // ========================================================================
+    // 1. MODO DEMO ACTIVO: En Vercel (donde no hay backend) usa datos mock
+    //    Si estás en localhost con el backend encendido, intenta el backend real
+    //    y si falla o devuelve HTML (como en Vercel), usa el modo demo.
+    // ========================================================================
+    const isLocalBackend =
+      typeof window !== 'undefined' &&
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+    if (DEMO_MODE && !isLocalBackend) {
+      return handleDemoApiRequest(urlStr, init);
+    }
+
+    // ========================================================================
+    // 2. LÓGICA ORIGINAL DE FETCH REAL (Con fallback automático a Demo si no hay API)
+    // ========================================================================
+    const isPublicLogin =
+      urlStr.includes('/api/users/login') ||
+      urlStr.includes('/api/health');
 
     const token = getAuthToken();
     const headers = new Headers(
@@ -58,18 +67,29 @@ export function setupAuthFetch() {
       headers.set('Authorization', `Bearer ${token}`);
     }
 
-    const response = await nativeFetch(input, { ...init, headers });
+    try {
+      const response = await nativeFetch(input, { ...init, headers });
 
-    if (response.status === 401 && !isPublicLogin) {
-      try {
-        localStorage.removeItem('siscontrol_auth_session');
-        localStorage.removeItem('siscontrol_active_user');
-      } catch {
-        // ignore storage errors
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        return handleDemoApiRequest(urlStr, init);
       }
-      window.dispatchEvent(new CustomEvent('siscontrol:session-expired'));
-    }
 
-    return response;
+      if (response.status === 401 && !isPublicLogin) {
+        if (DEMO_MODE) {
+          return handleDemoApiRequest(urlStr, init);
+        }
+        try {
+          localStorage.removeItem('siscontrol_auth_session');
+        } catch {
+          // ignore storage errors
+        }
+        window.dispatchEvent(new CustomEvent('siscontrol:session-expired'));
+      }
+
+      return response;
+    } catch (networkError) {
+      return handleDemoApiRequest(urlStr, init);
+    }
   };
 }
