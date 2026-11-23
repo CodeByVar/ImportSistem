@@ -8,7 +8,6 @@
   --font-heading: 'Montserrat', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
-  /* Paleta Oficial Manual de Marca Importadora Rivero - MODO CLARO */
   --brand-black: #0D0D0D;
   --brand-orange: #FF8C00;
   --brand-gold: #FFC107;
@@ -19,30 +18,30 @@
   --bg-dark-base: #F8F8FA;
   --bg-dark-surface: #FFFFFF;
   --bg-dark-card: #FFFFFF;
-  --bg-dark-card-hover: #F3F4F6;
+  --bg-dark-card-hover: #FFF7E8;
   --bg-dark-input: #FFFFFF;
-  --border-subtle: #ECECEF;
-  --border-glass: #E2E4E9;
-  --border-focus: #FF8C00;
+  --border-subtle: #E7E7EA;
+  --border-glass: #E2E2E6;
+  --border-focus: #D97706;
 
   --text-main: #0D0D0D;
   --text-muted: #52525B;
-  --text-faint: #8E8E93;
+  --text-faint: #71717A;
 
-  --cyan-primary: #FF8C00;
-  --cyan-glow: rgba(255, 140, 0, 0.22);
-  --emerald-success: #10b981;
-  --emerald-glow: rgba(16, 185, 129, 0.2);
-  --amber-warning: #FFC107;
-  --amber-glow: rgba(255, 193, 7, 0.24);
-  --rose-danger: #f43f5e;
-  --rose-glow: rgba(244, 63, 94, 0.2);
-  --indigo-brand: #FF8C00;
-  --indigo-glow: rgba(255, 140, 0, 0.2);
-  --orange-hero: #FF8C00;
+  --cyan-primary: var(--brand-orange);
+  --cyan-glow: rgba(255, 140, 0, 0.18);
+  --emerald-success: #10B981;
+  --emerald-glow: rgba(16, 185, 129, 0.16);
+  --amber-warning: var(--brand-gold);
+  --amber-glow: rgba(255, 193, 7, 0.18);
+  --rose-danger: #E11D48;
+  --rose-glow: rgba(225, 29, 72, 0.16);
+  --indigo-brand: var(--brand-orange);
+  --indigo-glow: rgba(255, 140, 0, 0.16);
+  --orange-hero: var(--brand-orange);
 
   --shadow-card: 0 2px 14px -2px rgba(13, 13, 13, 0.05), 0 0 1px 1px rgba(13, 13, 13, 0.03);
-  --shadow-glow: 0 0 20px -3px rgba(255, 140, 0, 0.28);
+  --shadow-glow: 0 0 20px -3px rgba(255, 140, 0, 0.22);
   --shadow-modal: 0 25px 50px -12px rgba(13, 13, 13, 0.2), 0 0 0 1px rgba(13, 13, 13, 0.06);
 
   --transition-fast: 0.15s ease;
@@ -54,42 +53,36 @@
   --bg-tab-container: #F1F2F6;
   --bg-subtle-box: #FFFFFF;
   --bg-item-card: #FFFFFF;
-  --table-th-bg: #F8F8FA;
-  --table-hover-bg: #FFF8EB;
+  --table-th-bg: #F1F2F6;
+  --table-hover-bg: #FFF7E8;
 }
 
-/* Paleta Oficial Manual de Marca Importadora Rivero - MODO OSCURO (#121212 & #1E1E1E) */
 [data-theme='dark'] {
   --bg-dark-base: #121212;
   --bg-dark-surface: #1E1E1E;
   --bg-dark-card: #1E1E1E;
   --bg-dark-card-hover: #282828;
   --bg-dark-input: #242424;
-
   --border-subtle: #2E2E2E;
   --border-focus: #FF8C00;
   --border-glass: #2E2E2E;
-
   --text-main: #FFFFFF;
   --text-muted: #A1A1AA;
-  --text-faint: #71717A;
-
-  --cyan-primary: #FF8C00;
-  --cyan-glow: rgba(255, 140, 0, 0.28);
-  --emerald-success: #10b981;
-  --emerald-glow: rgba(16, 185, 129, 0.25);
-  --amber-warning: #FFC107;
-  --amber-glow: rgba(255, 193, 7, 0.28);
-  --rose-danger: #f43f5e;
-  --rose-glow: rgba(244, 63, 94, 0.25);
-  --indigo-brand: #FFC107;
-  --indigo-glow: rgba(255, 193, 7, 0.25);
-  --orange-hero: #FF8C00;
-
-  --shadow-card: 0 10px 30px -10px rgba(0, 0, 0, 0.7), 0 0 1px 1px rgba(255, 255, 255, 0.06);
-  --shadow-glow: 0 0 25px -5px rgba(255, 140, 0, 0.35);
-  --shadow-modal: 0 25px 50px -12px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 140, 0, 0.16);
-
+  --text-faint: #85858C;
+  --cyan-primary: var(--brand-orange);
+  --cyan-glow: rgba(255, 140, 0, 0.24);
+  --emerald-success: #10B981;
+  --emerald-glow: rgba(16, 185, 129, 0.2);
+  --amber-warning: var(--brand-gold);
+  --amber-glow: rgba(255, 193, 7, 0.22);
+  --rose-danger: #FB7185;
+  --rose-glow: rgba(244, 63, 94, 0.2);
+  --indigo-brand: var(--brand-gold);
+  --indigo-glow: rgba(255, 193, 7, 0.2);
+  --orange-hero: var(--brand-orange);
+  --shadow-card: 0 10px 30px -10px rgba(0, 0, 0, 0.48), 0 0 1px 1px rgba(255, 255, 255, 0.045);
+  --shadow-glow: 0 0 24px -5px rgba(255, 140, 0, 0.28);
+  --shadow-modal: 0 25px 50px -12px rgba(0, 0, 0, 0.78), 0 0 0 1px rgba(255, 140, 0, 0.16);
   --bg-header: #1E1E1E;
   --bg-modal: #1E1E1E;
   --bg-modal-header: #181818;
@@ -97,7 +90,7 @@
   --bg-subtle-box: #242424;
   --bg-item-card: #242424;
   --table-th-bg: #181818;
-  --table-hover-bg: rgba(255, 140, 0, 0.06);
+  --table-hover-bg: rgba(255, 140, 0, 0.08);
 }
 
 * {
@@ -111,10 +104,9 @@ body {
   min-height: 100vh;
   overflow-x: hidden;
   line-height: 1.5;
-  background-image: 
-    radial-gradient(at 0% 0%, rgba(6, 182, 212, 0.06) 0px, transparent 50%),
-    radial-gradient(at 100% 0%, rgba(99, 102, 241, 0.06) 0px, transparent 50%),
-    radial-gradient(at 50% 100%, rgba(16, 185, 129, 0.04) 0px, transparent 50%);
+  background-image:
+    radial-gradient(at 0% 0%, rgba(255, 140, 0, 0.035) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(255, 193, 7, 0.025) 0px, transparent 50%);
   background-attachment: fixed;
 }
 
@@ -164,7 +156,7 @@ h1, h2, h3, h4, .font-heading {
 }
 
 .glass-panel:hover {
-  border-color: rgba(255, 255, 255, 0.18);
+  border-color: var(--border-focus);
 }
 
 .glass-panel-interactive:hover {
@@ -268,13 +260,13 @@ h1, h2, h3, h4, .font-heading {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #06b6d4 0%, #0284c7 100%);
-  color: #ffffff;
-  box-shadow: 0 4px 14px rgba(6, 182, 212, 0.35);
+  background: linear-gradient(135deg, #FF8C00 0%, #FFC107 100%);
+  color: #0D0D0D;
+  box-shadow: 0 4px 14px rgba(255, 140, 0, 0.24);
 }
 .btn-primary:hover {
-  background: linear-gradient(135deg, #0891b2 0%, #0369a1 100%);
-  box-shadow: 0 6px 20px rgba(6, 182, 212, 0.5);
+  background: linear-gradient(135deg, #F17B00 0%, #E9AE00 100%);
+  box-shadow: 0 6px 20px rgba(255, 140, 0, 0.34);
 }
 
 .btn-emerald {
@@ -367,7 +359,7 @@ h1, h2, h3, h4, .font-heading {
 }
 
 .data-table th {
-  background: rgba(12, 18, 34, 0.95);
+  background: var(--table-th-bg);
   color: var(--text-muted);
   font-size: 0.75rem;
   font-weight: 700;
@@ -392,7 +384,7 @@ h1, h2, h3, h4, .font-heading {
 }
 
 .data-table tr:hover td {
-  background-color: rgba(255, 255, 255, 0.03);
+  background-color: var(--table-hover-bg);
 }
 
 /* Modals */
@@ -410,7 +402,7 @@ h1, h2, h3, h4, .font-heading {
 }
 
 .modal-content {
-  background: #0d1527;
+  background: var(--bg-modal);
   border: 1px solid var(--border-glass);
   border-radius: 20px;
   width: 100%;
@@ -448,27 +440,29 @@ h1, h2, h3, h4, .font-heading {
 
 @keyframes pulseGlow {
   0%, 100% {
-    box-shadow: 0 0 15px -3px rgba(6, 182, 212, 0.3);
+    box-shadow: 0 0 15px -3px rgba(255, 140, 0, 0.24);
   }
   50% {
-    box-shadow: 0 0 28px 2px rgba(6, 182, 212, 0.6);
+    box-shadow: 0 0 28px 2px rgba(255, 140, 0, 0.48);
   }
 }
 
 /* ==================== LIGHT THEME OVERRIDES & POLISH ==================== */
 [data-theme='light'] body {
-  background-color: #F8F8FA !important;
-  color: #0D0D0D;
-  background-image: none !important;
+  background-color: var(--bg-dark-base) !important;
+  color: var(--text-main);
+  background-image:
+    radial-gradient(at 0% 0%, rgba(255, 140, 0, 0.035) 0px, transparent 45%),
+    radial-gradient(at 100% 0%, rgba(255, 193, 7, 0.025) 0px, transparent 45%) !important;
 }
 
 /* ==================== DARK THEME BRAND MANUAL OVERRIDES (#121212 & #1E1E1E) ==================== */
 [data-theme='dark'] body {
-  background-color: #121212 !important;
-  color: #FFFFFF;
+  background-color: var(--bg-dark-base) !important;
+  color: var(--text-main);
   background-image:
-    radial-gradient(at 0% 0%, rgba(255, 140, 0, 0.07) 0px, transparent 50%),
-    radial-gradient(at 100% 0%, rgba(255, 193, 7, 0.05) 0px, transparent 50%) !important;
+    radial-gradient(at 0% 0%, rgba(255, 140, 0, 0.055) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(255, 193, 7, 0.04) 0px, transparent 50%) !important;
 }
 
 [data-theme='dark'] .dark\:bg-slate-950,
@@ -518,8 +512,8 @@ h1, h2, h3, h4, .font-heading {
 }
 
 [data-theme='light'] .glass-panel-interactive:hover {
-  border-color: #EA580C !important;
-  box-shadow: 0 10px 20px -3px rgba(234, 88, 12, 0.12), 0 0 0 1px #EA580C !important;
+  border-color: #FF8C00 !important;
+  box-shadow: 0 10px 20px -3px rgba(255, 140, 0, 0.12), 0 0 0 1px #FF8C00 !important;
 }
 
 /* Modals in Light Mode */
@@ -592,8 +586,8 @@ h1, h2, h3, h4, .font-heading {
 [data-theme='light'] .form-input:focus,
 [data-theme='light'] .form-select:focus,
 [data-theme='light'] .form-textarea:focus {
-  border-color: #0284c7 !important;
-  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15) !important;
+  border-color: var(--border-focus) !important;
+  box-shadow: 0 0 0 3px var(--cyan-glow) !important;
 }
 
 [data-theme='light'] .form-label {
@@ -616,14 +610,14 @@ h1, h2, h3, h4, .font-heading {
 }
 
 [data-theme='light'] .btn-primary {
-  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%) !important;
-  color: #ffffff !important;
-  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.25) !important;
+  background: linear-gradient(135deg, #FF8C00 0%, #FFC107 100%) !important;
+  color: #0D0D0D !important;
+  box-shadow: 0 4px 12px rgba(255, 140, 0, 0.22) !important;
 }
 
 [data-theme='light'] .btn-primary:hover {
-  background: linear-gradient(135deg, #0369a1 0%, #075985 100%) !important;
-  box-shadow: 0 6px 16px rgba(2, 132, 199, 0.35) !important;
+  background: linear-gradient(135deg, #F17B00 0%, #E9AE00 100%) !important;
+  box-shadow: 0 6px 16px rgba(255, 140, 0, 0.3) !important;
 }
 
 [data-theme='light'] .btn-emerald {
@@ -671,27 +665,27 @@ h1, h2, h3, h4, .font-heading {
 
 /* Data Tables in Light Mode */
 [data-theme='light'] .data-table th {
-  background: #f1f5f9 !important;
-  color: #334155 !important;
-  border-bottom: 2px solid #cbd5e1 !important;
+  background: var(--table-th-bg) !important;
+  color: var(--text-muted) !important;
+  border-bottom: 1px solid var(--border-glass) !important;
 }
 
 [data-theme='light'] .data-table td {
-  border-bottom: 1px solid #e2e8f0 !important;
-  color: #0f172a !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+  color: var(--text-main) !important;
 }
 
 [data-theme='light'] .data-table tr:hover td {
-  background-color: #f8fafc !important;
+  background-color: var(--table-hover-bg) !important;
 }
 
 /* Ensure headings and hardcoded text are crisp in light mode */
-[data-theme='light'] h1, 
-[data-theme='light'] h2, 
-[data-theme='light'] h3, 
+[data-theme='light'] h1,
+[data-theme='light'] h2,
+[data-theme='light'] h3,
 [data-theme='light'] h4,
 [data-theme='light'] .font-heading {
-  color: #0f172a !important;
+  color: var(--text-main) !important;
 }
 
 [data-theme='light'] [style*="#f8fafc"],
@@ -699,9 +693,12 @@ h1, h2, h3, h4, .font-heading {
   color: #0f172a !important;
 }
 
-/* Keep white text on primary/gradient buttons */
+/* Keep accessible text contrast on colored buttons */
 [data-theme='light'] .btn-primary,
-[data-theme='light'] .btn-primary *,
+[data-theme='light'] .btn-primary * {
+  color: #0D0D0D !important;
+}
+
 [data-theme='light'] .btn-emerald,
 [data-theme='light'] .btn-emerald *,
 [data-theme='light'] .btn-indigo,
@@ -719,7 +716,7 @@ h1, h2, h3, h4, .font-heading {
 }
 
 [data-theme='light'] ::-webkit-scrollbar-thumb:hover {
-  background: #0284c7;
+  background: var(--brand-orange);
 }
 
 /* ==================== PRINT STYLES ==================== */

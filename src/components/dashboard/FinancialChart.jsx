@@ -153,7 +153,7 @@ export default function FinancialChart({
                     fontWeight: 700,
                     border: 'none',
                     cursor: 'pointer',
-                    background: chartFilter === f.id ? (f.id === 'VENTAS' ? '#EA580C' : f.id === 'COSTOS' ? '#1e293b' : 'var(--bg-dark-card)') : 'transparent',
+                    background: chartFilter === f.id ? (f.id === 'VENTAS' ? '#FF8C00' : f.id === 'COSTOS' ? '#1e293b' : 'var(--bg-dark-card)') : 'transparent',
                     color: chartFilter === f.id ? (f.id === 'ALL' ? 'var(--text-main)' : '#ffffff') : 'var(--text-muted)',
                     transition: 'all 0.15s ease'
                   }}
@@ -184,7 +184,7 @@ export default function FinancialChart({
               borderRadius: '8px',
               border: '1px solid var(--border-glass)'
             }}>
-              <span style={{ fontWeight: 800, color: '#EA580C' }}>{activeMonth.month}:</span>
+              <span style={{ fontWeight: 800, color: '#FF8C00' }}>{activeMonth.month}:</span>
               <span>Ventas <strong>Bs {activeMonth.ventasValBob.toLocaleString()}</strong></span>
               <span style={{ color: 'var(--text-muted)' }}>•</span>
               <span>Costos <strong>Bs {activeMonth.costosValBob.toLocaleString()}</strong></span>
@@ -195,7 +195,7 @@ export default function FinancialChart({
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px', color: 'var(--text-muted)' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <span style={{ width: '9px', height: '9px', borderRadius: '3px', background: '#EA580C' }} /> Ventas Facturadas
+                <span style={{ width: '9px', height: '9px', borderRadius: '3px', background: '#FF8C00' }} /> Ventas Facturadas
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                 <span style={{ width: '9px', height: '9px', borderRadius: '3px', background: '#334155' }} /> Costos Landed
@@ -223,15 +223,15 @@ export default function FinancialChart({
             <defs>
               <linearGradient id="ventasBarGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#f97316" />
-                <stop offset="100%" stopColor="#EA580C" />
+                <stop offset="100%" stopColor="#FF8C00" />
               </linearGradient>
               <linearGradient id="costosBarGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#475569" />
                 <stop offset="100%" stopColor="#1e293b" />
               </linearGradient>
               <linearGradient id="ventasAreaGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#EA580C" stopOpacity="0.25" />
-                <stop offset="100%" stopColor="#EA580C" stopOpacity="0.0" />
+                <stop offset="0%" stopColor="#FF8C00" stopOpacity="0.25" />
+                <stop offset="100%" stopColor="#FF8C00" stopOpacity="0.0" />
               </linearGradient>
               <linearGradient id="costosAreaGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#334155" stopOpacity="0.20" />
@@ -291,14 +291,14 @@ export default function FinancialChart({
                 {(chartFilter === 'ALL' || chartFilter === 'VENTAS') && (
                   <>
                     <path d={ventasArea} fill="url(#ventasAreaGrad)" />
-                    <path d={ventasPath} fill="none" stroke="#EA580C" strokeWidth="2.5" />
+                    <path d={ventasPath} fill="none" stroke="#FF8C00" strokeWidth="2.5" />
                     {ventasPoints.map((pt, i) => (
                       <circle
                         key={i}
                         cx={pt.x}
                         cy={pt.y}
                         r={hoveredMonthIdx === i ? 5.5 : 4}
-                        fill="#EA580C"
+                        fill="#FF8C00"
                         stroke="#ffffff"
                         strokeWidth="1.5"
                       />
@@ -333,7 +333,7 @@ export default function FinancialChart({
                         y="10"
                         width={slotWidth}
                         height={chartHeight - 5}
-                        fill="rgba(234, 88, 12, 0.05)"
+                        fill="rgba(255, 140, 0, 0.05)"
                         rx="6"
                       />
                     )}
@@ -367,7 +367,7 @@ export default function FinancialChart({
                         style={{
                           opacity: isHovered ? 1 : 0.95,
                           transition: 'all 0.2s ease',
-                          filter: isHovered ? 'drop-shadow(0 4px 8px rgba(234, 88, 12, 0.35))' : 'none'
+                          filter: isHovered ? 'drop-shadow(0 4px 8px rgba(255, 140, 0, 0.35))' : 'none'
                         }}
                       />
                     )}
@@ -402,7 +402,7 @@ export default function FinancialChart({
                     x={centerX}
                     y={chartHeight + 16}
                     textAnchor="middle"
-                    fill={isHovered ? '#EA580C' : 'var(--text-muted)'}
+                    fill={isHovered ? '#FF8C00' : 'var(--text-muted)'}
                     fontWeight={isHovered ? 800 : 600}
                     fontSize="11"
                     fontFamily="var(--font-sans)"

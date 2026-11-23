@@ -76,7 +76,7 @@ export default function ModernHeader({
   const [profPin, setProfPin] = useState('');
   const [showPin, setShowPin] = useState(false);
   const [profPhone, setProfPhone] = useState('');
-  const [profColor, setProfColor] = useState('#EA580C');
+  const [profColor, setProfColor] = useState('#FF8C00');
   const [profAvatarUrl, setProfAvatarUrl] = useState('');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profError, setProfError] = useState('');
@@ -107,7 +107,7 @@ export default function ModernHeader({
     name: 'Carlos Rivero V.',
     username: 'carlos',
     role: 'SUPER_ADMIN',
-    avatar_color: '#EA580C'
+    avatar_color: '#FF8C00'
   };
 
   const localToday = useMemo(() => {
@@ -169,7 +169,7 @@ export default function ModernHeader({
     setProfUsername(activeUser.username || '');
     setProfPin('');
     setProfPhone(activeUser.phone || '');
-    setProfColor(activeUser.avatar_color || '#EA580C');
+    setProfColor(activeUser.avatar_color || '#FF8C00');
     setProfAvatarUrl(activeUser.avatar_url || '');
     setIsProfileOpen(true);
 
@@ -181,7 +181,7 @@ export default function ModernHeader({
           setProfUsername(res.data.username || '');
           setProfPin(res.data.pin_code || '');
           setProfPhone(res.data.phone || '');
-          setProfColor(res.data.avatar_color || '#EA580C');
+          setProfColor(res.data.avatar_color || '#FF8C00');
           setProfAvatarUrl(res.data.avatar_url || '');
         }
       } catch (e) {
@@ -386,22 +386,24 @@ export default function ModernHeader({
         className="w-full bg-white dark:bg-slate-900 rounded-2xl sm:rounded-full shadow-[0_10px_35px_rgba(0,0,0,0.08)] dark:shadow-[0_10px_35px_rgba(0,0,0,0.4)] border-2 border-slate-200/90 dark:border-slate-800 px-3 sm:px-8 lg:px-12 py-2.5 sm:py-3.5 min-h-[60px] sm:min-h-[72px] flex items-center justify-between gap-2 sm:gap-6 transition-all"
       >
         {/* Left: Official Importadora Rivero Brand Logo */}
-        <div
+        <button
+          type="button"
           onClick={() => setActiveTab && setActiveTab('dashboard')}
-          className="flex items-center gap-2 sm:gap-3 shrink-0 ml-1 sm:ml-4 cursor-pointer"
-          title="Importadora Rivero - Simplificamos tu esfuerzo"
+          className="flex items-center shrink-0 ml-1 sm:ml-4 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF8C00] focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900 rounded-2xl"
+          aria-label="Ir al dashboard de Importadora Rivero"
+          title="Importadora Rivero — Simplificamos tu esfuerzo"
         >
           <BrandLogo variant="capsule-dark" showSlogan={true} />
-        </div>
+        </button>
 
         {/* Right: Actions & User Capsule */}
-        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0 mr-1 sm:mr-4">
+        <div className="flex items-center gap-1 sm:gap-3 shrink-0 mr-1 sm:mr-4">
           {/* 1. Circular Search Button */}
           <button 
             type="button"
             title="Buscador rápido del sistema (Módulos, Notas, Productos)"
             onClick={handleOpenSearch}
-            className="w-8.5 h-8.5 sm:w-9.5 sm:h-9.5 rounded-full bg-slate-50 dark:bg-slate-800 border-2 border-slate-200/90 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:text-cyan-600 dark:hover:text-cyan-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer shadow-2xs"
+            className="w-[30px] h-[30px] sm:w-[38px] sm:h-[38px] rounded-full bg-slate-50 dark:bg-slate-800 border-2 border-slate-200/90 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer shadow-2xs"
           >
             <Search size={14} strokeWidth={2.2} />
           </button>
@@ -411,11 +413,11 @@ export default function ModernHeader({
             type="button"
             title="Notificaciones de Orden del Día y Notas con Deuda"
             onClick={handleOpenNotifs}
-            className="w-8.5 h-8.5 sm:w-9.5 sm:h-9.5 rounded-full bg-slate-50 dark:bg-slate-800 border-2 border-slate-200/90 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors relative cursor-pointer shadow-2xs"
+            className="w-[30px] h-[30px] sm:w-[38px] sm:h-[38px] rounded-full bg-slate-50 dark:bg-slate-800 border-2 border-slate-200/90 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors relative cursor-pointer shadow-2xs"
           >
             <Bell size={14} strokeWidth={2.2} />
             {totalNotifCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-[#EA580C] text-white text-[9px] font-black flex items-center justify-center ring-2 ring-white dark:ring-slate-900">
+              <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-[#FF8C00] text-white text-[9px] font-black flex items-center justify-center ring-2 ring-white dark:ring-slate-900">
                 {totalNotifCount > 99 ? '99+' : totalNotifCount}
               </span>
             )}
@@ -427,7 +429,7 @@ export default function ModernHeader({
               type="button"
               title="Cierre de Caja Diario & Gastos (Efectivo, QR Jaime/Betho y WhatsApp)"
               onClick={onOpenCashClosing}
-              className="w-8.5 h-8.5 sm:w-9.5 sm:h-9.5 rounded-full bg-emerald-50 dark:bg-emerald-500/15 border-2 border-emerald-200/90 dark:border-emerald-500/40 flex items-center justify-center text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-500/25 transition-colors cursor-pointer shadow-2xs"
+              className="w-[30px] h-[30px] sm:w-[38px] sm:h-[38px] rounded-full bg-emerald-50 dark:bg-emerald-500/15 border-2 border-emerald-200/90 dark:border-emerald-500/40 flex items-center justify-center text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-500/25 transition-colors cursor-pointer shadow-2xs"
             >
               <Wallet size={15} strokeWidth={2.2} />
             </button>
@@ -439,7 +441,7 @@ export default function ModernHeader({
               type="button"
               title={theme === 'dark' ? 'Cambiar a Modo Claro' : 'Cambiar a Modo Oscuro'}
               onClick={toggleTheme}
-              className="w-8.5 h-8.5 sm:w-9.5 sm:h-9.5 rounded-full bg-slate-50 dark:bg-slate-800 border-2 border-slate-200/90 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer shadow-2xs"
+              className="w-[30px] h-[30px] sm:w-[38px] sm:h-[38px] rounded-full bg-slate-50 dark:bg-slate-800 border-2 border-slate-200/90 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer shadow-2xs"
             >
               {theme === 'dark' ? <Sun size={14} className="text-amber-400" /> : <Moon size={14} />}
             </button>
@@ -449,7 +451,7 @@ export default function ModernHeader({
           <div 
             onClick={handleOpenProfile}
             title={`Mi Perfil: ${activeUser.name} (${getRoleLabel(activeUser.role)}) - Toca para editar foto, nombre o contraseña`}
-            className="flex items-center gap-2 sm:gap-3 pl-1.5 sm:pl-2 pr-2.5 sm:pr-4.5 py-1 sm:py-1.5 rounded-full bg-slate-50 dark:bg-slate-800/90 border-2 border-slate-200/90 dark:border-slate-700 hover:border-[#EA580C]/60 hover:bg-slate-100 dark:hover:bg-slate-700/80 transition-all cursor-pointer select-none shadow-xs ml-0.5 sm:ml-1 group"
+            className="flex items-center gap-2 sm:gap-3 pl-1.5 sm:pl-2 pr-2.5 sm:pr-4.5 py-1 sm:py-1.5 rounded-full bg-slate-50 dark:bg-slate-800/90 border-2 border-slate-200/90 dark:border-slate-700 hover:border-[#FF8C00]/60 hover:bg-slate-100 dark:hover:bg-slate-700/80 transition-all cursor-pointer select-none shadow-xs ml-0.5 sm:ml-1 group"
           >
             {activeUser.avatar_url ? (
               <img 
@@ -459,7 +461,7 @@ export default function ModernHeader({
               />
             ) : (
               <div 
-                style={{ backgroundColor: activeUser.avatar_color || '#EA580C' }}
+                style={{ backgroundColor: activeUser.avatar_color || '#FF8C00' }}
                 className="w-8 h-8 sm:w-9 sm:h-9 rounded-full text-white font-black text-xs flex items-center justify-center shadow-xs shrink-0 ring-2 ring-white/20"
               >
                 {getInitials(activeUser.name)}
@@ -482,7 +484,7 @@ export default function ModernHeader({
               type="button"
               title="Bloquear terminal / Cerrar sesión"
               onClick={onLogout}
-              className="w-8.5 h-8.5 sm:w-9.5 sm:h-9.5 rounded-full bg-slate-50 dark:bg-slate-800 border-2 border-slate-200/90 dark:border-slate-700 flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:border-rose-400/50 transition-colors cursor-pointer shadow-2xs"
+              className="w-[30px] h-[30px] sm:w-[38px] sm:h-[38px] rounded-full bg-slate-50 dark:bg-slate-800 border-2 border-slate-200/90 dark:border-slate-700 flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:border-rose-400/50 transition-colors cursor-pointer shadow-2xs"
             >
               <Lock size={14} strokeWidth={2.2} />
             </button>

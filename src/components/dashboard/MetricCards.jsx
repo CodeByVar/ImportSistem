@@ -29,7 +29,7 @@ export default function MetricCards({
       <div className="glass-panel" style={{
         padding: '18px 20px',
         borderRadius: '14px',
-        borderLeft: '4px solid #EA580C',
+        borderLeft: '4px solid #FF8C00',
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'space-between',
@@ -45,8 +45,8 @@ export default function MetricCards({
               width: '32px',
               height: '32px',
               borderRadius: '8px',
-              background: 'rgba(234, 88, 12, 0.1)',
-              color: '#EA580C',
+              background: 'rgba(255, 140, 0, 0.1)',
+              color: '#FF8C00',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center'
@@ -60,7 +60,7 @@ export default function MetricCards({
             </div>
             {/* Sparkline */}
             <svg width="54" height="22" viewBox="0 0 54 22" fill="none" style={{ opacity: 0.85 }}>
-              <path d="M2 18 L12 14 L22 16 L32 9 L42 11 L52 3" stroke="#EA580C" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M2 18 L12 14 L22 16 L32 9 L42 11 L52 3" stroke="#FF8C00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </div>
         </div>
@@ -71,7 +71,7 @@ export default function MetricCards({
           <button 
             type="button" 
             onClick={() => onSelectTab('notes')}
-            style={{ fontSize: '0.72rem', color: '#EA580C', fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}
+            style={{ fontSize: '0.72rem', color: '#FF8C00', fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}
           >
             Ver Notas <ArrowRight size={11} />
           </button>

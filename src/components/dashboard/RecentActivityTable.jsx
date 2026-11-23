@@ -80,7 +80,7 @@ export default function RecentActivityTable({
                   fontWeight: 700,
                   border: 'none',
                   cursor: 'pointer',
-                  background: movementFilter === f.id ? (f.id === 'SALIDA' ? '#EA580C' : f.id === 'ENTRADA' ? '#0284c7' : 'var(--bg-dark-card)') : 'transparent',
+                  background: movementFilter === f.id ? (f.id === 'SALIDA' ? '#FF8C00' : f.id === 'ENTRADA' ? '#0284c7' : 'var(--bg-dark-card)') : 'transparent',
                   color: movementFilter === f.id ? (f.id === 'ALL' ? 'var(--text-main)' : '#ffffff') : 'var(--text-muted)',
                   transition: 'all 0.15s ease'
                 }}
@@ -154,9 +154,9 @@ export default function RecentActivityTable({
                       fontSize: '0.68rem',
                       fontWeight: 700,
                       textTransform: 'uppercase',
-                      background: row.type === 'ENTRADA' ? 'rgba(2, 132, 199, 0.12)' : 'rgba(234, 88, 12, 0.12)',
-                      color: row.type === 'ENTRADA' ? '#0284c7' : '#EA580C',
-                      border: `1px solid ${row.type === 'ENTRADA' ? 'rgba(2, 132, 199, 0.25)' : 'rgba(234, 88, 12, 0.25)'}`
+                      background: row.type === 'ENTRADA' ? 'rgba(2, 132, 199, 0.12)' : 'rgba(255, 140, 0, 0.12)',
+                      color: row.type === 'ENTRADA' ? '#0284c7' : '#FF8C00',
+                      border: `1px solid ${row.type === 'ENTRADA' ? 'rgba(2, 132, 199, 0.25)' : 'rgba(255, 140, 0, 0.25)'}`
                     }}>
                       {row.type}
                     </span>
@@ -188,7 +188,7 @@ export default function RecentActivityTable({
         <button
           type="button"
           onClick={() => onSelectTab('movements')}
-          style={{ fontSize: '0.74rem', color: '#EA580C', fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}
+          style={{ fontSize: '0.74rem', color: '#FF8C00', fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}
         >
           Ver Historial Completo en Kardex <ArrowRight size={12} />
         </button>

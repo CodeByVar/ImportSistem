@@ -143,36 +143,22 @@ export default function BrandLogo({
     );
   }
 
-  // Default: "capsule-dark" (Ideal para el Header principal en modo claro y oscuro)
+  const capsuleSizes = {
+    sm: 'w-[116px] h-[44px]',
+    md: 'w-[116px] h-[44px] sm:w-[158px] sm:h-[60px]',
+    lg: 'w-[158px] h-[60px] sm:w-[190px] sm:h-[72px]',
+    xl: 'w-[190px] h-[72px] sm:w-[222px] sm:h-[84px]'
+  };
+
   return (
-    <div
-      className={`bg-[#0D0D0D] dark:bg-[#161616] text-white px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl flex items-center gap-2 sm:gap-3 shadow-md border border-[#262626] dark:border-[#FF8C00]/30 select-none ${className}`}
+    <span
+      className={`${capsuleSizes[size] || capsuleSizes.md} overflow-hidden rounded-xl sm:rounded-2xl bg-[#0D0D0D] border border-[#FF8C00]/40 shadow-md shadow-black/15 dark:shadow-black/35 inline-flex shrink-0 select-none ${className}`}
     >
-      <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-[#1A1A1A] border border-[#FF8C00]/30 flex items-center justify-center shrink-0 shadow-inner">
-        <RiveroIconSVG className="w-6 h-6 sm:w-7 sm:h-7" />
-      </div>
-      <div className="flex flex-col leading-none pr-1">
-        <span
-          style={{ fontFamily: "'Montserrat', sans-serif" }}
-          className="text-[9px] sm:text-[10px] tracking-[0.2em] text-white font-extrabold uppercase"
-        >
-          IMPORTADORA
-        </span>
-        <span
-          style={{ fontFamily: "'Montserrat', sans-serif" }}
-          className="text-xs sm:text-[15px] font-black tracking-[0.08em] uppercase bg-gradient-to-r from-[#FF8C00] via-[#FFC107] to-[#FFE082] bg-clip-text text-transparent mt-0.5"
-        >
-          RIVERO
-        </span>
-        {showSlogan && (
-          <span
-            style={{ fontFamily: "'Montserrat', sans-serif" }}
-            className="text-[7px] sm:text-[8px] tracking-[0.14em] text-neutral-400 font-semibold uppercase mt-0.5 hidden sm:block"
-          >
-            SIMPLIFICAMOS TU ESFUERZO
-          </span>
-        )}
-      </div>
-    </div>
+      <img
+        src="/logo-importadora-rivero-brand.png"
+        alt="Importadora Rivero — Simplificamos tu esfuerzo"
+        className="h-full w-full object-cover object-center"
+      />
+    </span>
   );
 }

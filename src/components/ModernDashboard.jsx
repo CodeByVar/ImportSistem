@@ -76,7 +76,7 @@ export default function ModernDashboard({
       const list = chartsData.categoryDistribution.slice(0, 4);
       const sumVal = list.reduce((acc, c) => acc + (c.inventory_value || 0), 0) || 1;
       const palette = [
-        { color: '#EA580C', bg: 'rgba(234, 88, 12, 0.12)', text: '#EA580C', border: 'rgba(234, 88, 12, 0.3)' },
+        { color: '#FF8C00', bg: 'rgba(255, 140, 0, 0.12)', text: '#FF8C00', border: 'rgba(255, 140, 0, 0.3)' },
         { color: '#0284c7', bg: 'rgba(2, 132, 199, 0.12)', text: '#0284c7', border: 'rgba(2, 132, 199, 0.3)' },
         { color: '#059669', bg: 'rgba(5, 150, 105, 0.12)', text: '#059669', border: 'rgba(5, 150, 105, 0.3)' },
         { color: '#7c3aed', bg: 'rgba(124, 58, 237, 0.12)', text: '#7c3aed', border: 'rgba(124, 58, 237, 0.3)' },
@@ -107,10 +107,10 @@ export default function ModernDashboard({
         name: 'Herramientas Eléctricas',
         percentage: 38,
         amountBob: total * 0.38,
-        color: '#EA580C',
-        badgeBg: 'rgba(234, 88, 12, 0.12)',
-        badgeColor: '#EA580C',
-        badgeBorder: 'rgba(234, 88, 12, 0.3)',
+        color: '#FF8C00',
+        badgeBg: 'rgba(255, 140, 0, 0.12)',
+        badgeColor: '#FF8C00',
+        badgeBorder: 'rgba(255, 140, 0, 0.3)',
         count: 1179
       },
       {
@@ -322,12 +322,12 @@ export default function ModernDashboard({
             width: '42px',
             height: '42px',
             borderRadius: '12px',
-            background: 'rgba(234, 88, 12, 0.12)',
-            border: '1px solid rgba(234, 88, 12, 0.25)',
+            background: 'rgba(255, 140, 0, 0.12)',
+            border: '1px solid rgba(255, 140, 0, 0.25)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: '#EA580C',
+            color: '#FF8C00',
             flexShrink: 0
           }}>
             <LayoutDashboard size={22} />
