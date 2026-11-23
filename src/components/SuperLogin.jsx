@@ -11,11 +11,9 @@ import {
   Lock, 
   AlertCircle, 
   CheckCircle2,
-  Sparkles,
   X
 } from 'lucide-react';
 import BrandLogo, { RiveroIconSVG } from './BrandLogo';
-import { DEMO_MODE, DEMO_TOKEN, buildDemoUser } from '../config/demoMode';
 
 export default function SuperLogin({ onLoginSuccess }) {
   const [username, setUsername] = useState(() => localStorage.getItem('siscontrol_last_username') || '');
@@ -27,47 +25,9 @@ export default function SuperLogin({ onLoginSuccess }) {
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [showAccessModal, setShowAccessModal] = useState(false);
 
-  // Autenticación directa para Modo Demo (sin depender de API ni exigir PIN válido)
-  const triggerDemoLogin = (rawUser, provider = 'credentials') => {
-    const demoUser = buildDemoUser(rawUser || username || 'Abel', provider);
-    const session = {
-      user: demoUser,
-      token: DEMO_TOKEN,
-      loginAt: new Date().toISOString(),
-      demoMode: true
-    };
-    localStorage.setItem('siscontrol_last_username', demoUser.username);
-    localStorage.setItem('siscontrol_auth_session', JSON.stringify(session));
-    localStorage.setItem('siscontrol_active_user', JSON.stringify(demoUser));
-    setErrorMessage('');
-    setSuccessMessage(`¡Bienvenido a Importadora Rivero, ${demoUser.nombre}! (Modo Demo)`);
-    onLoginSuccess(demoUser, DEMO_TOKEN);
-  };
-
-  // Handler para botón "Continuar con Google"
-  const handleGoogleLogin = () => {
-    if (DEMO_MODE) {
-      triggerDemoLogin(username || 'Abel', 'google');
-      return;
-    }
-    setErrorMessage('El inicio de sesión con Google requiere conectar el backend OAuth.');
-  };
-
   // Form submission ("Iniciar sesión")
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    // ========================================================================
-    // 1. INTERCEPTOR MODO DEMO (Sin fetch a la API ni validación de PIN)
-    // ========================================================================
-    if (DEMO_MODE) {
-      triggerDemoLogin(username || 'Abel', 'credentials');
-      return;
-    }
-
-    // ========================================================================
-    // 2. LÓGICA ORIGINAL DE FETCH REAL (Intacta para cuando se conecte la API)
-    // ========================================================================
     if (!username.trim()) {
       setErrorMessage('Ingresa tu nombre de usuario');
       return;
@@ -89,13 +49,6 @@ export default function SuperLogin({ onLoginSuccess }) {
           pin_code: pinCode.trim()
         })
       });
-
-      const contentType = response.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) {
-        // Fallback seguro si el servidor devuelve HTML en lugar de JSON
-        triggerDemoLogin(username || 'Abel', 'credentials');
-        return;
-      }
 
       const res = await response.json();
 
@@ -206,17 +159,9 @@ export default function SuperLogin({ onLoginSuccess }) {
           <div className="my-auto max-w-sm mx-auto w-full py-4">
             
             {/* Sub-badge */}
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <div className="flex items-center gap-2 text-[10px] font-extrabold tracking-widest uppercase text-neutral-500">
-                <span className="w-2 h-2 rounded-full bg-[#FF8C00]" />
-                <span>PORTAL DE COLABORADORES</span>
-              </div>
-              {DEMO_MODE && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-[#FFE082]/40 text-[#0D0D0D] border border-[#FFC107]">
-                  <Sparkles size={11} className="text-[#FF8C00]" />
-                  MODO DEMO ACTIVO
-                </span>
-              )}
+            <div className="flex items-center gap-2 text-[10px] font-extrabold tracking-widest uppercase text-neutral-500 mb-2">
+              <span className="w-2 h-2 rounded-full bg-[#FF8C00]" />
+              <span>PORTAL DE COLABORADORES</span>
             </div>
 
             {/* Title & Subtitle */}
@@ -226,10 +171,8 @@ export default function SuperLogin({ onLoginSuccess }) {
             >
               Hola, colaborador
             </h1>
-            <p className="text-xs text-neutral-500 mt-1 mb-5">
-              {DEMO_MODE
-                ? 'Modo Demo habilitado: presiona "Iniciar sesión" o "Continuar con Google" para entrar directo al Dashboard.'
-                : 'Ingresa tus credenciales para continuar a SISCONTROL ERP.'}
+            <p className="text-xs text-neutral-500 mt-1 mb-6">
+              Ingresa tus credenciales para continuar a SISCONTROL ERP.
             </p>
 
             {/* Error Message */}
@@ -249,7 +192,7 @@ export default function SuperLogin({ onLoginSuccess }) {
             )}
 
             {/* Form */}
-            <form onSubmit={handleSubmit} noValidate={DEMO_MODE} className="flex flex-col gap-3.5">
+            <form onSubmit={handleSubmit} className="flex flex-col gap-3.5">
               
               {/* Usuario Field */}
               <div>
@@ -264,8 +207,8 @@ export default function SuperLogin({ onLoginSuccess }) {
                     autoComplete="username"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    placeholder={DEMO_MODE ? 'Abel (opcional en modo demo)' : 'Tu usuario'}
-                    required={!DEMO_MODE}
+                    placeholder="Tu usuario"
+                    required
                     className="w-full bg-[#F8F8FA] border border-neutral-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-[#0D0D0D] placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-[#FF8C00] focus:bg-white focus:border-transparent transition-all font-semibold"
                   />
                 </div>
@@ -294,9 +237,9 @@ export default function SuperLogin({ onLoginSuccess }) {
                     autoComplete="current-password"
                     value={pinCode}
                     onChange={(e) => setPinCode(e.target.value)}
-                    placeholder={DEMO_MODE ? 'No requerido en Modo Demo' : 'Ingresa tu PIN de 4 dígitos'}
+                    placeholder="Ingresa tu PIN de 4 dígitos"
                     maxLength={6}
-                    required={!DEMO_MODE}
+                    required
                     className="w-full bg-[#F8F8FA] border border-neutral-200 rounded-xl pl-10 pr-10 py-2.5 text-sm text-[#0D0D0D] placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-[#FF8C00] focus:bg-white focus:border-transparent transition-all font-semibold"
                   />
                   <button
@@ -327,21 +270,6 @@ export default function SuperLogin({ onLoginSuccess }) {
                     <ArrowRight size={16} />
                   </>
                 )}
-              </button>
-
-              {/* Continuar con Google Button */}
-              <button
-                type="button"
-                onClick={handleGoogleLogin}
-                className="w-full bg-white hover:bg-[#F8F8FA] active:scale-[0.99] text-[#0D0D0D] font-bold py-2.5 rounded-xl border-2 border-neutral-200 hover:border-[#FF8C00]/50 flex items-center justify-center gap-2.5 text-xs sm:text-sm transition-all cursor-pointer shadow-2xs"
-              >
-                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    fill="#EA4335"
-                    d="M12 10.2v3.9h5.5c-.2 1.3-1.6 3.8-5.5 3.8-3.3 0-6-2.7-6-6.1s2.7-6.1 6-6.1c1.9 0 3.2.8 3.9 1.5l2.7-2.6C16.9 3 14.7 2 12 2 6.5 2 2 6.5 2 12s4.5 10 10 10c5.8 0 9.6-4.1 9.6-9.8 0-.7-.1-1.2-.2-1.7H12z"
-                  />
-                </svg>
-                <span>Continuar con Google</span>
               </button>
 
             </form>

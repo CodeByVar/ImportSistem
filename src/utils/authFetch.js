@@ -1,8 +1,5 @@
-// Global fetch wrapper that automatically injects JWT Bearer token on all /api/* requests,
-// supports DEMO_MODE for frontend-only deploys (e.g. Vercel without backend),
-// and gracefully falls back to mock JSON data if an endpoint returns HTML instead of JSON.
-
-import { DEMO_MODE, handleDemoApiRequest } from '../config/demoMode';
+// Global fetch wrapper that automatically injects JWT Bearer token on all /api/* requests
+// and gracefully handles 401 session expiration across the entire app.
 
 let isInstalled = false;
 
@@ -11,6 +8,13 @@ export function getAuthToken() {
     const raw = localStorage.getItem('siscontrol_auth_session');
     if (!raw) return null;
     const parsed = JSON.parse(raw);
+    // Clear any leftover temporary demo session token
+    if (parsed?.demoMode || parsed?.token === 'demo-jwt-token-importadora-rivero-2026') {
+      localStorage.removeItem('siscontrol_auth_session');
+      localStorage.removeItem('siscontrol_active_user');
+      localStorage.removeItem('siscontrol_demo_state_v1');
+      return null;
+    }
     return parsed?.token || null;
   } catch {
     return null;
@@ -20,6 +24,9 @@ export function getAuthToken() {
 export function setupAuthFetch() {
   if (isInstalled || typeof window === 'undefined' || !window.fetch) return;
   isInstalled = true;
+
+  // Purge any leftover demo session on startup
+  getAuthToken();
 
   const nativeFetch = window.fetch.bind(window);
 
@@ -34,23 +41,13 @@ export function setupAuthFetch() {
       urlStr.startsWith('/api/') ||
       urlStr.startsWith(`${window.location.origin}/api/`);
 
-    if (!isApiCall) {
-      return nativeFetch(input, init);
-    }
-
-    // ========================================================================
-    // 1. MODO DEMO ACTIVO: Intercepta antes de llamar a la red y usa datos mock
-    // ========================================================================
-    if (DEMO_MODE) {
-      return handleDemoApiRequest(urlStr, init);
-    }
-
-    // ========================================================================
-    // 2. LÓGICA ORIGINAL DE FETCH REAL (Intacta para cuando se conecte la API)
-    // ========================================================================
     const isPublicLogin =
       urlStr.includes('/api/users/login') ||
       urlStr.includes('/api/health');
+
+    if (!isApiCall) {
+      return nativeFetch(input, init);
+    }
 
     const token = getAuthToken();
     const headers = new Headers(
@@ -61,29 +58,18 @@ export function setupAuthFetch() {
       headers.set('Authorization', `Bearer ${token}`);
     }
 
-    try {
-      const response = await nativeFetch(input, { ...init, headers });
+    const response = await nativeFetch(input, { ...init, headers });
 
-      // Si el servidor devuelve HTML (ej. 404/SPA fallback en Vercel) en vez de JSON,
-      // usamos el fallback demo para evitar "Unexpected token 'T'... is not valid JSON"
-      const contentType = response.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) {
-        return handleDemoApiRequest(urlStr, init);
+    if (response.status === 401 && !isPublicLogin) {
+      try {
+        localStorage.removeItem('siscontrol_auth_session');
+        localStorage.removeItem('siscontrol_active_user');
+      } catch {
+        // ignore storage errors
       }
-
-      if (response.status === 401 && !isPublicLogin) {
-        try {
-          localStorage.removeItem('siscontrol_auth_session');
-        } catch {
-          // ignore storage errors
-        }
-        window.dispatchEvent(new CustomEvent('siscontrol:session-expired'));
-      }
-
-      return response;
-    } catch (networkError) {
-      // Si la API no está disponible por error de red, responde con datos demo seguros
-      return handleDemoApiRequest(urlStr, init);
+      window.dispatchEvent(new CustomEvent('siscontrol:session-expired'));
     }
+
+    return response;
   };
 }
