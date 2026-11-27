@@ -19,7 +19,8 @@ import {
   Trash2,
   DollarSign,
   Clock,
-  UserCheck
+  UserCheck,
+  X
 } from 'lucide-react';
 import { formatNumber } from '../utils/formatters';
 
@@ -804,9 +805,10 @@ export default function WeeklyDispatchesTable({ userRole = 'SUPER_ADMIN' }) {
               <button
                 onClick={() => setSelectedNoteDetail(null)}
                 className="btn btn-secondary"
-                style={{ padding: '4px 8px', fontSize: '0.75rem' }}
+                style={{ padding: '4px 8px', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
               >
-                ✕ Cerrar
+                <X size={13} />
+                <span>Cerrar</span>
               </button>
             </div>
 

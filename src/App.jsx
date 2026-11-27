@@ -157,14 +157,14 @@ export default function App() {
       try {
         const res = await fetch('/api/system/work-schedule').then(r => r.json());
         if (res.success && res.data && res.data.enabled && !res.data.isWithinHours) {
-          alert(`🔒 Horario Laboral Finalizado (${res.data.scheduleLabel} hrs).\nEl sistema se cerrará automáticamente por seguridad.`);
+          alert(`Horario Laboral Finalizado (${res.data.scheduleLabel} hrs).\nEl sistema se cerrará automáticamente por seguridad.`);
           handleLogout();
         }
       } catch {
         // Fallback por reloj local si no hay red
         const h = new Date().getHours();
         if (h < 7 || h >= 19) {
-          alert('🔒 Horario Laboral Finalizado (07:00 AM - 07:00 PM).\nEl sistema se cerrará automáticamente por seguridad.');
+          alert('Horario Laboral Finalizado (07:00 AM - 07:00 PM).\nEl sistema se cerrará automáticamente por seguridad.');
           handleLogout();
         }
       }
@@ -426,6 +426,7 @@ export default function App() {
                 onOpenNewMovement={handleOpenNewMovement}
                 onEditProduct={(product) => setEditingProduct(product)}
                 userRole={currentUser?.role || 'VENTAS'}
+                onRefreshData={fetchData}
               />
             )}
 

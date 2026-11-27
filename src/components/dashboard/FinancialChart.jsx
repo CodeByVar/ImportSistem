@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TrendingUp, BarChart2, Activity, Ship, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { TrendingUp, BarChart2, Activity, Ship, ArrowRight, CheckCircle2, Waves, Truck } from 'lucide-react';
 
 export default function FinancialChart({ 
   monthlyFlowData = [], 
@@ -452,11 +452,13 @@ export default function FinancialChart({
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span className="badge badge-amber" style={{ fontSize: '0.68rem', padding: '2px 7px' }}>
-                    🚢 {activeShipment.transport_type === 'TERRESTRE' ? 'CAMIÓN DIRECTO' : 'MARÍTIMO + CAMIÓN'}
+                  <span className="badge badge-amber" style={{ fontSize: '0.68rem', padding: '2px 7px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    {activeShipment.transport_type === 'TERRESTRE' ? <Truck size={11} /> : <Ship size={11} />}
+                    <span>{activeShipment.transport_type === 'TERRESTRE' ? 'CAMIÓN DIRECTO' : 'MARÍTIMO + CAMIÓN'}</span>
                   </span>
-                  <span className="badge badge-cyan" style={{ fontSize: '0.68rem', padding: '2px 7px' }}>
-                    🌊 En Altamar / Arica
+                  <span className="badge badge-cyan" style={{ fontSize: '0.68rem', padding: '2px 7px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <Waves size={11} />
+                    <span>En Altamar / Arica</span>
                   </span>
                 </div>
                 <div className="mono" style={{ fontSize: '0.96rem', fontWeight: 800, color: 'var(--text-main)', marginTop: '4px' }}>

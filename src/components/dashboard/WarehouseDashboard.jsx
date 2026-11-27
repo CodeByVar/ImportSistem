@@ -13,7 +13,8 @@ import {
   Layers,
   FileSpreadsheet,
   FileText,
-  ClipboardList
+  ClipboardList,
+  Waves
 } from 'lucide-react';
 import { formatNumber, formatDate } from '../../utils/formatters';
 
@@ -53,8 +54,9 @@ export default function WarehouseDashboard({
             <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
             <span>Terminal de Operaciones & Logística</span>
           </div>
-          <h1 className="text-xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
-            Hola, {currentUser?.name ? currentUser.name.split(' ')[0] : 'Encargado'} 📦
+          <h1 className="text-xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+            <span>Hola, {currentUser?.name ? currentUser.name.split(' ')[0] : 'Encargado'}</span>
+            <Package size={22} className="text-indigo-500 shrink-0" />
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 capitalize">
             {todayLabel} • Almacén Central Cochabamba
@@ -266,12 +268,22 @@ export default function WarehouseDashboard({
                           {c.shipping_line || 'Naviera'}
                         </span>
                       </div>
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border inline-flex items-center gap-1.5 ${
                         isReceived 
                           ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40'
                           : 'bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-950/40'
                       }`}>
-                        {isReceived ? '✅ EN BODEGA' : '🌊 EN TRÁNSITO'}
+                        {isReceived ? (
+                          <>
+                            <CheckCircle2 size={11} />
+                            <span>EN BODEGA</span>
+                          </>
+                        ) : (
+                          <>
+                            <Waves size={11} />
+                            <span>EN TRÁNSITO</span>
+                          </>
+                        )}
                       </span>
                     </div>
 
@@ -331,8 +343,9 @@ export default function WarehouseDashboard({
           </div>
 
           {criticalProducts.length === 0 ? (
-            <div className="py-12 text-center text-xs text-emerald-600 font-bold">
-              ✅ Todos los productos tienen stock saludable en bodega.
+            <div className="py-12 text-center text-xs text-emerald-600 font-bold flex items-center justify-center gap-1.5">
+              <CheckCircle2 size={15} />
+              <span>Todos los productos tienen stock saludable en bodega.</span>
             </div>
           ) : (
             <div className="space-y-2.5">
@@ -352,8 +365,9 @@ export default function WarehouseDashboard({
                       <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
                         {p.name}
                       </p>
-                      <span className="text-[10px] text-slate-400">
-                        📍 {p.warehouse || 'CASA CUBANO'}
+                      <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                        <MapPin size={10} />
+                        <span>{p.warehouse || 'CASA CUBANO'}</span>
                       </span>
                     </div>
 

@@ -13,17 +13,25 @@ import {
   Tag,
   Building2,
   FileText,
-  Edit3
+  Edit3,
+  MapPin,
+  Pin,
+  User,
+  TrendingUp,
+  SlidersHorizontal
 } from 'lucide-react';
 import { formatCurrency, formatNumber, formatPercent } from '../utils/formatters';
+import PriceAdjustmentModal from './PriceAdjustmentModal';
 
 export default function InventoryTable({ 
   products = [], 
   onOpenNewMovement, 
   onEditProduct,
   initialFilter = 'all',
-  userRole = 'SUPER_ADMIN'   // ← recibe el rol para controlar visibilidad
+  userRole = 'SUPER_ADMIN',   // ← recibe el rol para controlar visibilidad
+  onRefreshData
 }) {
+  const [isPriceAdjustmentOpen, setIsPriceAdjustmentOpen] = useState(false);
   // ——— Flags de visibilidad según rol ———
   const canSeeCosts  = ['SUPER_ADMIN', 'ADMIN'].includes(userRole);
   const canSeePrices = ['SUPER_ADMIN', 'ADMIN', 'VENTAS', 'CAJA'].includes(userRole);
@@ -164,15 +172,31 @@ export default function InventoryTable({
           </div>
         </div>
 
-        {/* Export Button */}
-        <button 
-          onClick={handleExportCSV}
-          className="btn btn-secondary"
-          style={{ fontSize: '0.82rem', padding: '8px 16px', gap: '8px' }}
-        >
-          <Download size={15} />
-          <span>Exportar a Excel (.csv)</span>
-        </button>
+        {/* Action Buttons */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          {canSeeCosts && (
+            <button 
+              type="button"
+              onClick={() => setIsPriceAdjustmentOpen(true)}
+              className="btn btn-primary"
+              style={{ fontSize: '0.82rem', padding: '8px 16px', gap: '8px', background: '#FF8C00', borderColor: '#FF8C00', color: '#0D0D0D', fontWeight: 800 }}
+              title="Reajustar precios masivamente por tipo de cambio de dólar o porcentaje por marca/rubro"
+            >
+              <TrendingUp size={15} />
+              <span>Reajustar Precios (Dólar / Rubro)</span>
+            </button>
+          )}
+
+          {/* Export Button */}
+          <button 
+            onClick={handleExportCSV}
+            className="btn btn-secondary"
+            style={{ fontSize: '0.82rem', padding: '8px 16px', gap: '8px' }}
+          >
+            <Download size={15} />
+            <span>Exportar a Excel (.csv)</span>
+          </button>
+        </div>
       </div>
 
       {/* Filter Bar */}
@@ -292,7 +316,15 @@ export default function InventoryTable({
               {canSeePrices && !canSeeWholesaleOnly && <th style={{ textAlign: 'right' }}>Precio Caja (Bs)</th>}
               {canSeePrices && !canSeeWholesaleOnly && <th style={{ textAlign: 'right' }}>Precio Especial (Bs)</th>}
               <th style={{ width: '190px' }}>Stock Físico & Disp.</th>
-              {!isAlmacen && <th style={{ width: '220px' }}>📦 Reservas (Cajas / Cliente)</th>}
+              {!isAlmacen && (
+                <th style={{ width: '220px' }}>
+                  <span className="inline-flex items-center gap-1.5">
+                    <Package size={13} />
+                    <span>Reservas (Cajas / Cliente)</span>
+                  </span>
+                </th>
+              )}
+              {canSeeCosts && <th style={{ width: '85px', textAlign: 'center' }}>Acciones</th>}
             </tr>
           </thead>
           <tbody>
@@ -325,9 +357,17 @@ export default function InventoryTable({
                     <td>
                       <div style={{ fontWeight: 600, color: '#f8fafc', fontSize: '0.88rem' }}>{p.name}</div>
                       <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)', display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '3px' }}>
-                        <span style={{ color: 'var(--indigo-brand)', fontWeight: 600 }}>🏷️ {p.brand || 'UYUSTOOLS'}</span>
-                        <span>📍 {p.warehouse || 'CASA CUBANO'}</span>
-                        {p.customs_policy && <span style={{ color: 'var(--emerald-success)' }}>📄 {p.customs_policy}</span>}
+                        <span style={{ color: 'var(--indigo-brand)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                          <Tag size={11} /> {p.brand || 'UYUSTOOLS'}
+                        </span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                          <MapPin size={11} /> {p.warehouse || 'CASA CUBANO'}
+                        </span>
+                        {p.customs_policy && (
+                          <span style={{ color: 'var(--emerald-success)', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                            <FileText size={11} /> {p.customs_policy}
+                          </span>
+                        )}
                       </div>
                     </td>
 
@@ -409,8 +449,9 @@ export default function InventoryTable({
                         {reservedBoxes > 0 || reservedUnits > 0 ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                             <div>
-                              <span className="badge badge-amber" style={{ fontSize: '0.72rem', padding: '2px 8px', fontWeight: 700 }}>
-                                📌 {reservedBoxes} cjs ({formatNumber(reservedUnits)} u)
+                              <span className="badge badge-amber" style={{ fontSize: '0.72rem', padding: '2px 8px', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                <Pin size={10} />
+                                <span>{reservedBoxes} cjs ({formatNumber(reservedUnits)} u)</span>
                               </span>
                             </div>
                             {p.reserved_clients_summary && (
@@ -422,11 +463,15 @@ export default function InventoryTable({
                                   maxWidth: '210px',
                                   overflow: 'hidden',
                                   textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap'
+                                  whiteSpace: 'nowrap',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '3px'
                                 }} 
                                 title={`Clientes con reserva: ${p.reserved_clients_summary}`}
                               >
-                                👤 {p.reserved_clients_summary}
+                                <User size={10} style={{ flexShrink: 0 }} />
+                                <span>{p.reserved_clients_summary}</span>
                               </div>
                             )}
                           </div>
@@ -435,6 +480,22 @@ export default function InventoryTable({
                             Sin reservas
                           </span>
                         )}
+                      </td>
+                    )}
+
+                    {/* Acciones de edición (Admin / Super Admin) */}
+                    {canSeeCosts && (
+                      <td style={{ textAlign: 'center' }}>
+                        <button
+                          type="button"
+                          onClick={() => onEditProduct && onEditProduct(p)}
+                          className="btn btn-secondary"
+                          style={{ fontSize: '0.72rem', padding: '3px 8px', gap: '4px', color: '#FF8C00' }}
+                          title={`Editar precios y datos de ${p.sku}`}
+                        >
+                          <Edit3 size={11} />
+                          <span>Editar</span>
+                        </button>
                       </td>
                     )}
                   </tr>
@@ -519,6 +580,15 @@ export default function InventoryTable({
           </div>
         </div>
       )}
+
+      {/* Modal de Reajuste Masivo de Precios (Dólar / Rubro / Porcentaje) */}
+      <PriceAdjustmentModal
+        isOpen={isPriceAdjustmentOpen}
+        onClose={() => setIsPriceAdjustmentOpen(false)}
+        onPricesAdjusted={() => {
+          if (onRefreshData) onRefreshData();
+        }}
+      />
     </div>
   );
 }

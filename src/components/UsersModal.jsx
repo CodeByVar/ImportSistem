@@ -17,46 +17,56 @@ import {
   UserCheck, 
   Sparkles, 
   ShieldAlert,
-  ArrowRight
+  ArrowRight,
+  Crown,
+  Package,
+  DollarSign,
+  Info,
+  User
 } from 'lucide-react';
 
 const ROLES_INFO = {
   SUPER_ADMIN: {
     label: 'Super Administrador',
     badgeClass: 'badge-emerald',
-    icon: '👑',
+    iconComponent: Crown,
     color: '#10b981',
     description: 'Control total de la importadora, costos FOB, utilidades, finanzas, anulación y configuración de usuarios.'
   },
   ADMIN: {
     label: 'Administrador',
     badgeClass: 'badge-cyan',
-    icon: '🛡️',
+    iconComponent: ShieldCheck,
     color: '#0284c7',
     description: 'Gestión operativa, inventarios, compras, notas de venta y reportes generales.'
   },
   VENTAS: {
     label: 'Ventas & Despachos',
     badgeClass: 'badge-amber',
-    icon: '💼',
+    iconComponent: Briefcase,
     color: '#FF8C00',
     description: 'Emisión de notas de venta, cartera de clientes y consulta de precios de venta (mayorista, caja, especial).'
   },
   ALMACEN: {
     label: 'Almacén & Logística',
     badgeClass: 'badge-indigo',
-    icon: '📦',
+    iconComponent: Package,
     color: '#6366f1',
     description: 'Planilla de despacho diario, conteo físico de cajas y recepción de contenedores en bodega.'
   },
   CAJA: {
     label: 'Caja & Cobranzas',
     badgeClass: 'badge-cyan',
-    icon: '💵',
+    iconComponent: DollarSign,
     color: '#059669',
     description: 'Registro de cobros, abonos en efectivo/QR y seguimiento de estados de cuenta de clientes.'
   }
 };
+
+function RoleBadgeIcon({ role, size = 13 }) {
+  const IconComp = ROLES_INFO[role]?.iconComponent || User;
+  return <IconComp size={size} />;
+}
 
 const AVATAR_COLORS = [
   '#FF8C00', '#0284c7', '#10b981', '#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#0f172a'
@@ -409,8 +419,9 @@ export default function UsersModal({
                     <span style={{ fontSize: '0.90rem', fontWeight: 800, color: 'var(--text-main)' }}>
                       {currentUser.name}
                     </span>
-                    <span className="badge badge-emerald" style={{ fontSize: '0.68rem', padding: '2px 7px' }}>
-                      {ROLES_INFO[currentUser.role]?.icon || '👤'} Sesión Activa
+                    <span className="badge badge-emerald" style={{ fontSize: '0.68rem', padding: '2px 7px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      <RoleBadgeIcon role={currentUser.role} size={12} />
+                      <span>Sesión Activa</span>
                     </span>
                   </div>
                   <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
@@ -631,7 +642,7 @@ export default function UsersModal({
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                          <span>{info.icon}</span>
+                          <RoleBadgeIcon role={roleKey} size={14} />
                           <span style={{ fontSize: '0.78rem', fontWeight: 800, color: isSelected ? info.color : 'var(--text-main)' }}>
                             {info.label}
                           </span>
@@ -764,8 +775,9 @@ export default function UsersModal({
                           <span style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--text-main)' }}>
                             {user.name}
                           </span>
-                          <span className={`badge ${roleInfo.badgeClass}`} style={{ fontSize: '0.68rem', padding: '2px 8px' }}>
-                            {roleInfo.icon} {roleInfo.label}
+                          <span className={`badge ${roleInfo.badgeClass}`} style={{ fontSize: '0.68rem', padding: '2px 8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <RoleBadgeIcon role={user.role} size={11} />
+                            <span>{roleInfo.label}</span>
                           </span>
                           {isCurrent && (
                             <span style={{ fontSize: '0.68rem', color: '#FF8C00', fontWeight: 800 }}>
@@ -1058,8 +1070,9 @@ export default function UsersModal({
           fontSize: '0.72rem',
           color: 'var(--text-muted)'
         }}>
-          <span>
-            💡 Los trabajadores con rol <strong>Ventas</strong> o <strong>Almacén</strong> no tendrán acceso a costos FOB ni márgenes confidenciales.
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+            <Info size={14} color="#FF8C00" style={{ flexShrink: 0 }} />
+            <span>Los trabajadores con rol <strong>Ventas</strong> o <strong>Almacén</strong> no tendrán acceso a costos FOB ni márgenes confidenciales.</span>
           </span>
           <button
             type="button"

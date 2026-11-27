@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { LayoutDashboard, Users, Box, ShieldCheck, Sparkles, Eye } from 'lucide-react';
+import { LayoutDashboard, Users, Box, ShieldCheck, Sparkles, Eye, Crown, Briefcase, Package } from 'lucide-react';
 import MetricCards from './dashboard/MetricCards';
 import WarehouseStock from './dashboard/WarehouseStock';
 import FinancialChart from './dashboard/FinancialChart';
@@ -355,29 +355,32 @@ export default function ModernDashboard({
             <button
               type="button"
               onClick={() => setAdminViewMode('EJECUTIVO')}
-              className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+              className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 ${
                 adminViewMode === 'EJECUTIVO' 
                   ? 'bg-white dark:bg-slate-900 text-orange-600 shadow-sm' 
                   : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
               }`}
             >
-              👑 Ejecutivo
+              <Crown size={13} />
+              <span>Ejecutivo</span>
             </button>
             <button
               type="button"
               onClick={() => setAdminViewMode('VENTAS')}
-              className="px-3 py-1.5 rounded-xl font-bold text-slate-500 hover:text-orange-600 dark:hover:text-orange-400 transition-all cursor-pointer"
+              className="px-3 py-1.5 rounded-xl font-bold text-slate-500 hover:text-orange-600 dark:hover:text-orange-400 transition-all cursor-pointer inline-flex items-center gap-1.5"
               title="Previsualizar el dashboard de Ventas"
             >
-              💼 Ventas
+              <Briefcase size={13} />
+              <span>Ventas</span>
             </button>
             <button
               type="button"
               onClick={() => setAdminViewMode('ALMACEN')}
-              className="px-3 py-1.5 rounded-xl font-bold text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all cursor-pointer"
+              className="px-3 py-1.5 rounded-xl font-bold text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all cursor-pointer inline-flex items-center gap-1.5"
               title="Previsualizar el dashboard de Almacén"
             >
-              📦 Almacén
+              <Package size={13} />
+              <span>Almacén</span>
             </button>
           </div>
         )}

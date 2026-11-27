@@ -573,6 +573,314 @@ app.put('/api/products/:id', requireRoles('SUPER_ADMIN', 'ADMIN'), (req, res) =>
   }
 });
 
+// =============================================================================
+// REAJUSTE MASIVO DE PRECIOS (TIPO DE CAMBIO DÓLAR / PORCENTAJE / MARCA / RUBRO)
+// =============================================================================
+
+// 1. Opciones para filtros de reajuste (Marcas y Categorías con conteo real)
+app.get('/api/products/price-adjustment-options', requireRoles('SUPER_ADMIN', 'ADMIN'), (req, res) => {
+  try {
+    const brands = db.prepare(`
+      SELECT brand, COUNT(*) AS count 
+      FROM products 
+      WHERE brand IS NOT NULL AND TRIM(brand) != '' 
+      GROUP BY brand 
+      ORDER BY count DESC
+    `).all();
+
+    const categories = db.prepare(`
+      SELECT category, COUNT(*) AS count 
+      FROM products 
+      WHERE category IS NOT NULL AND TRIM(category) != '' 
+      GROUP BY category 
+      ORDER BY count DESC
+    `).all();
+
+    const rateRow = db.prepare(`
+      SELECT exchange_rate, COUNT(*) as c 
+      FROM products 
+      WHERE exchange_rate IS NOT NULL AND exchange_rate > 0 
+      GROUP BY exchange_rate 
+      ORDER BY c DESC 
+      LIMIT 1
+    `).get();
+
+    const totalProducts = db.prepare('SELECT COUNT(*) AS total FROM products').get().total;
+
+    res.json({
+      success: true,
+      data: {
+        brands,
+        categories,
+        defaultExchangeRate: rateRow ? Number(rateRow.exchange_rate) : 11.5,
+        totalProducts
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Helper de redondeo para reajustes
+function applyPriceRounding(val, roundMode) {
+  const num = Number(val) || 0;
+  if (num <= 0) return 0;
+  if (roundMode === 'NEAREST_5') {
+    return Math.max(1, Math.round(num / 5) * 5);
+  }
+  if (roundMode === 'DECIMAL') {
+    return Math.round(num * 100) / 100;
+  }
+  // Por defecto: 'WHOLE' (Entero sin centavos)
+  return Math.max(1, Math.round(num));
+}
+
+// 2. Simulación de reajuste de precios (Antes vs Después sin guardar en BD)
+app.post('/api/products/simulate-price-adjustment', requireRoles('SUPER_ADMIN', 'ADMIN'), (req, res) => {
+  try {
+    const {
+      scopeBrand,
+      scopeCategory,
+      adjustmentType = 'RATE',
+      baseRate = 11.5,
+      newRate = 11.5,
+      percentValue = 0,
+      roundMode = 'WHOLE',
+      applyWholesale = true,
+      applyBox = true,
+      applySpecial = true
+    } = req.body;
+
+    const bRate = Math.max(0.1, Number(baseRate) || 11.5);
+    const nRate = Math.max(0.1, Number(newRate) || 11.5);
+    const pVal = Number(percentValue) || 0;
+
+    let multiplier = 1;
+    let percentDiff = 0;
+
+    if (adjustmentType === 'RATE') {
+      multiplier = nRate / bRate;
+      percentDiff = ((nRate - bRate) / bRate) * 100;
+    } else {
+      multiplier = 1 + (pVal / 100);
+      percentDiff = pVal;
+    }
+
+    const whereClauses = ['1=1'];
+    const params = [];
+
+    if (scopeBrand && scopeBrand !== 'ALL') {
+      whereClauses.push('brand = ?');
+      params.push(scopeBrand);
+    }
+    if (scopeCategory && scopeCategory !== 'ALL') {
+      whereClauses.push('category = ?');
+      params.push(scopeCategory);
+    }
+
+    const countSql = `SELECT COUNT(*) AS total FROM products WHERE ${whereClauses.join(' AND ')}`;
+    const totalMatched = db.prepare(countSql).get(...params).total;
+
+    // Obtener muestra de 15 productos para la vista previa
+    const sampleSql = `
+      SELECT id, sku, name, brand, category, exchange_rate, wholesale_price, box_price, special_price, sale_price 
+      FROM products 
+      WHERE ${whereClauses.join(' AND ')} 
+      ORDER BY id ASC 
+      LIMIT 15
+    `;
+    const samplesRaw = db.prepare(sampleSql).all(...params);
+
+    const samples = samplesRaw.map(p => {
+      const oldWholesale = Number(p.wholesale_price || p.sale_price || 0);
+      const oldBox = Number(p.box_price || 0);
+      const oldSpecial = Number(p.special_price || 0);
+
+      const newWholesale = applyWholesale && oldWholesale > 0
+        ? applyPriceRounding(oldWholesale * multiplier, roundMode)
+        : oldWholesale;
+
+      const newBox = applyBox && oldBox > 0
+        ? applyPriceRounding(oldBox * multiplier, roundMode)
+        : oldBox;
+
+      const newSpecial = applySpecial && oldSpecial > 0
+        ? applyPriceRounding(oldSpecial * multiplier, roundMode)
+        : oldSpecial;
+
+      return {
+        id: p.id,
+        sku: p.sku,
+        name: p.name,
+        brand: p.brand,
+        category: p.category,
+        old_rate: Number(p.exchange_rate) || bRate,
+        new_rate: adjustmentType === 'RATE' ? nRate : (Number(p.exchange_rate) || bRate),
+        old_wholesale: oldWholesale,
+        new_wholesale: newWholesale,
+        old_box: oldBox,
+        new_box: newBox,
+        old_special: oldSpecial,
+        new_special: newSpecial
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        totalMatched,
+        multiplier: Math.round(multiplier * 10000) / 10000,
+        percentDiff: Math.round(percentDiff * 100) / 100,
+        samples
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 3. Aplicar Reajuste Masivo con respaldo automático previo y bitácora
+app.post('/api/products/bulk-price-adjustment', requireRoles('SUPER_ADMIN'), async (req, res) => {
+  try {
+    const {
+      scopeBrand,
+      scopeCategory,
+      adjustmentType = 'RATE',
+      baseRate = 11.5,
+      newRate = 11.5,
+      percentValue = 0,
+      roundMode = 'WHOLE',
+      applyWholesale = true,
+      applyBox = true,
+      applySpecial = true
+    } = req.body;
+
+    const bRate = Math.max(0.1, Number(baseRate) || 11.5);
+    const nRate = Math.max(0.1, Number(newRate) || 11.5);
+    const pVal = Number(percentValue) || 0;
+
+    let multiplier = 1;
+    let percentDiff = 0;
+
+    if (adjustmentType === 'RATE') {
+      multiplier = nRate / bRate;
+      percentDiff = ((nRate - bRate) / bRate) * 100;
+    } else {
+      multiplier = 1 + (pVal / 100);
+      percentDiff = pVal;
+    }
+
+    // Respaldo de seguridad previo obligatorio
+    let backupResult = null;
+    try {
+      backupResult = await createDatabaseBackup(db, 'price_readjust');
+    } catch (bErr) {
+      console.warn('Advertencia al crear backup previo de reajuste:', bErr.message);
+    }
+
+    const whereClauses = ['1=1'];
+    const params = [];
+
+    if (scopeBrand && scopeBrand !== 'ALL') {
+      whereClauses.push('brand = ?');
+      params.push(scopeBrand);
+    }
+    if (scopeCategory && scopeCategory !== 'ALL') {
+      whereClauses.push('category = ?');
+      params.push(scopeCategory);
+    }
+
+    const selectSql = `
+      SELECT id, sku, exchange_rate, wholesale_price, box_price, special_price, sale_price 
+      FROM products 
+      WHERE ${whereClauses.join(' AND ')}
+    `;
+    const targetProducts = db.prepare(selectSql).all(...params);
+
+    if (targetProducts.length === 0) {
+      return res.json({
+        success: true,
+        affectedCount: 0,
+        message: 'No se encontraron productos que coincidan con los filtros seleccionados.'
+      });
+    }
+
+    const updateProductStmt = db.prepare(`
+      UPDATE products 
+      SET 
+        wholesale_price = ?,
+        sale_price = ?,
+        box_price = ?,
+        special_price = ?,
+        exchange_rate = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+
+    // Ejecutar actualización atómica en transacción
+    const runTransaction = db.transaction(() => {
+      for (const p of targetProducts) {
+        const oldWholesale = Number(p.wholesale_price || p.sale_price || 0);
+        const oldBox = Number(p.box_price || 0);
+        const oldSpecial = Number(p.special_price || 0);
+
+        const newWholesale = applyWholesale && oldWholesale > 0
+          ? applyPriceRounding(oldWholesale * multiplier, roundMode)
+          : oldWholesale;
+
+        const newBox = applyBox && oldBox > 0
+          ? applyPriceRounding(oldBox * multiplier, roundMode)
+          : oldBox;
+
+        const newSpecial = applySpecial && oldSpecial > 0
+          ? applyPriceRounding(oldSpecial * multiplier, roundMode)
+          : oldSpecial;
+
+        const updatedRate = adjustmentType === 'RATE' ? nRate : (Number(p.exchange_rate) || bRate);
+
+        updateProductStmt.run(
+          newWholesale,
+          newWholesale, // mantener sincronizado sale_price con wholesale_price
+          newBox,
+          newSpecial,
+          updatedRate,
+          p.id
+        );
+      }
+    });
+
+    runTransaction();
+
+    // Registrar auditoría de seguridad
+    logSecurityEvent(db, {
+      action: 'BULK_PRICE_ADJUSTED',
+      actorUser: req.user,
+      target: `brand:${scopeBrand || 'ALL'}|cat:${scopeCategory || 'ALL'}`,
+      ip: getClientIp(req),
+      details: {
+        adjustmentType,
+        baseRate: bRate,
+        newRate: nRate,
+        percentValue: pVal,
+        multiplier: Math.round(multiplier * 10000) / 10000,
+        percentDiff: Math.round(percentDiff * 100) / 100,
+        roundMode,
+        affectedCount: targetProducts.length,
+        backupFile: backupResult?.filename || null
+      }
+    });
+
+    res.json({
+      success: true,
+      affectedCount: targetProducts.length,
+      backupFile: backupResult?.filename || null,
+      message: `¡Reajuste completado con éxito! Se actualizaron ${targetProducts.length} productos.`
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Quick Stock-In (Ingreso rápido de mercadería recién llegada desde el modal de Nota)
 app.post('/api/products/:id/quick-stock-in', requireRoles('SUPER_ADMIN', 'ADMIN', 'ALMACEN'), (req, res) => {
   try {

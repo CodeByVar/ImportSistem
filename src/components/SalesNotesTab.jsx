@@ -12,7 +12,8 @@ import {
   AlertCircle,
   MapPin,
   Banknote,
-  QrCode
+  QrCode,
+  ClipboardList
 } from 'lucide-react';
 
 function getActiveRoleFallback(currentUser) {
@@ -317,7 +318,9 @@ export default function SalesNotesTab({
               ) : notes.length === 0 ? (
                 <tr>
                   <td colSpan="10" style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}>
-                    <div style={{ fontSize: '2.5rem', marginBottom: '10px' }}>📋</div>
+                    <div style={{ marginBottom: '12px', display: 'flex', justifyContent: 'center' }}>
+                      <ClipboardList size={40} color="var(--text-muted)" opacity={0.6} />
+                    </div>
                     <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-main)' }}>No se encontraron notas de venta</div>
                     <div style={{ fontSize: '0.82rem', marginTop: '4px' }}>Crea tu primera nota haciendo clic en "+ Nueva Nota de Venta"</div>
                   </td>
@@ -356,10 +359,10 @@ export default function SalesNotesTab({
                               href={n.delivery_location_url} 
                               target="_blank" 
                               rel="noreferrer" 
-                              style={{ color: 'var(--cyan-primary)', textDecoration: 'underline', marginLeft: '4px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '2px' }}
+                              style={{ color: 'var(--cyan-primary)', textDecoration: 'underline', marginLeft: '4px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '3px' }}
                               title="Abrir ubicación en Google Maps"
                             >
-                              📍 Maps
+                              <MapPin size={11} /> Maps
                             </a>
                           )}
                         </div>
