@@ -78,6 +78,8 @@ export default function UsersModal({
   const [auditLogs, setAuditLogs] = useState([]);
   const [isCreatingBackup, setIsCreatingBackup] = useState(false);
   const [showAuditLogs, setShowAuditLogs] = useState(false);
+  const [workSchedule, setWorkSchedule] = useState({ enabled: true, openHour: 7, closeHour: 19, scheduleLabel: '07:00 a 19:00' });
+  const [isSavingSchedule, setIsSavingSchedule] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -91,14 +93,15 @@ export default function UsersModal({
     notes: ''
   });
 
-  // Fetch users + backups + audit logs
+  // Fetch users + backups + audit logs + work schedule
   const fetchUsers = async () => {
     setIsLoading(true);
     try {
-      const [usersRes, backupsRes, logsRes] = await Promise.all([
+      const [usersRes, backupsRes, logsRes, schedRes] = await Promise.all([
         fetch('/api/users').then(r => r.json()),
         fetch('/api/system/backups').then(r => r.json()).catch(() => ({ success: false })),
-        fetch('/api/system/audit-logs?limit=25').then(r => r.json()).catch(() => ({ success: false }))
+        fetch('/api/system/audit-logs?limit=25').then(r => r.json()).catch(() => ({ success: false })),
+        fetch('/api/system/work-schedule').then(r => r.json()).catch(() => ({ success: false }))
       ]);
       if (usersRes.success && usersRes.data) {
         setUsers(usersRes.data);
@@ -109,10 +112,32 @@ export default function UsersModal({
       if (logsRes.success && logsRes.data) {
         setAuditLogs(logsRes.data);
       }
+      if (schedRes.success && schedRes.data) {
+        setWorkSchedule(schedRes.data);
+      }
     } catch (err) {
       console.error('Error fetching users:', err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSaveWorkSchedule = async (nextConfig) => {
+    setIsSavingSchedule(true);
+    try {
+      const res = await fetch('/api/system/work-schedule', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nextConfig)
+      }).then(r => r.json());
+      if (res.success && res.data) {
+        setWorkSchedule(res.data);
+        showNotification(res.message || 'Horario laboral actualizado');
+      }
+    } catch (err) {
+      setErrorMsg(err.message);
+    } finally {
+      setIsSavingSchedule(false);
     }
   };
 
@@ -844,6 +869,85 @@ export default function UsersModal({
                   </div>
                 );
               })}
+            </div>
+          </div>
+
+          {/* Bloqueo de Horario Laboral (07:00 AM a 07:00 PM) */}
+          <div style={{
+            background: workSchedule.enabled ? 'rgba(255, 140, 0, 0.08)' : 'rgba(148, 163, 184, 0.08)',
+            border: workSchedule.enabled ? '1px solid rgba(255, 140, 0, 0.35)' : '1px solid var(--border-glass)',
+            borderRadius: '14px',
+            padding: '14px 16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Lock size={18} color={workSchedule.enabled ? '#FF8C00' : '#94a3b8'} />
+                <div>
+                  <div style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>Horario Laboral de Acceso ({String(workSchedule.openHour).padStart(2, '0')}:00 AM – {String(workSchedule.closeHour).padStart(2, '0')}:00 PM)</span>
+                    <span className={workSchedule.enabled ? 'badge badge-amber' : 'badge'} style={{ fontSize: '0.65rem' }}>
+                      {workSchedule.enabled ? 'BLOQUEO ACTIVO' : 'DESACTIVADO (24H)'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                    Fuera de este horario el sistema se cierra automáticamente para colaboradores. <strong>Solo tú (Super Admin) tienes acceso las 24 horas.</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                  <span>Abre:</span>
+                  <select
+                    value={workSchedule.openHour}
+                    disabled={isSavingSchedule}
+                    onChange={(e) => handleSaveWorkSchedule({ ...workSchedule, openHour: Number(e.target.value) })}
+                    className="form-select"
+                    style={{ width: 'auto', padding: '4px 8px', fontSize: '0.74rem', fontWeight: 700 }}
+                  >
+                    {[5, 6, 7, 8, 9].map(h => (
+                      <option key={h} value={h}>{String(h).padStart(2, '0')}:00 AM</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                  <span>Cierra:</span>
+                  <select
+                    value={workSchedule.closeHour}
+                    disabled={isSavingSchedule}
+                    onChange={(e) => handleSaveWorkSchedule({ ...workSchedule, closeHour: Number(e.target.value) })}
+                    className="form-select"
+                    style={{ width: 'auto', padding: '4px 8px', fontSize: '0.74rem', fontWeight: 700 }}
+                  >
+                    {[18, 19, 20, 21, 22].map(h => (
+                      <option key={h} value={h}>{String(h).padStart(2, '0')}:00 ({h - 12}:00 PM)</option>
+                    ))}
+                  </select>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isSavingSchedule}
+                  onClick={() => handleSaveWorkSchedule({ ...workSchedule, enabled: !workSchedule.enabled })}
+                  className="btn"
+                  style={{
+                    padding: '6px 12px',
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: workSchedule.enabled ? '#0f172a' : '#FF8C00',
+                    color: '#ffffff',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {workSchedule.enabled ? 'Pausar Bloqueo' : 'Activar Bloqueo 7-7'}
+                </button>
+              </div>
             </div>
           </div>
 

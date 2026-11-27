@@ -1225,6 +1225,47 @@ export async function handleDemoApiRequest(urlStr, init = {}) {
     });
   }
 
+  // 12. Work Schedule (07:00 AM - 07:00 PM)
+  if (path === '/api/system/work-schedule') {
+    const savedCfg = JSON.parse(localStorage.getItem('siscontrol_work_schedule_v1') || 'null') || {
+      enabled: true,
+      openHour: 7,
+      closeHour: 19
+    };
+    if (method === 'PUT') {
+      const next = {
+        enabled: body.enabled !== undefined ? Boolean(body.enabled) : savedCfg.enabled,
+        openHour: Number.isFinite(Number(body.openHour)) ? Number(body.openHour) : savedCfg.openHour,
+        closeHour: Number.isFinite(Number(body.closeHour)) ? Number(body.closeHour) : savedCfg.closeHour
+      };
+      localStorage.setItem('siscontrol_work_schedule_v1', JSON.stringify(next));
+      return jsonResponse({
+        success: true,
+        data: {
+          ...next,
+          scheduleLabel: `${String(next.openHour).padStart(2, '0')}:00 a ${String(next.closeHour).padStart(2, '0')}:00`
+        },
+        message: next.enabled
+          ? `Horario laboral activo de ${String(next.openHour).padStart(2, '0')}:00 a ${String(next.closeHour).padStart(2, '0')}:00 hrs.`
+          : 'Restricción de horario laboral desactivada temporalmente.'
+      });
+    }
+    const now = new Date();
+    const h = now.getHours();
+    const m = now.getMinutes();
+    return jsonResponse({
+      success: true,
+      data: {
+        ...savedCfg,
+        currentHour: h,
+        currentMinute: m,
+        formattedTime: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
+        scheduleLabel: `${String(savedCfg.openHour).padStart(2, '0')}:00 a ${String(savedCfg.closeHour).padStart(2, '0')}:00`,
+        isWithinHours: !savedCfg.enabled || (h >= savedCfg.openHour && h < savedCfg.closeHour)
+      }
+    });
+  }
+
   // Fallback genérico para cualquier otro endpoint /api/*
   return jsonResponse({
     success: true,

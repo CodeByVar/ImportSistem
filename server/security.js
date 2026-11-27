@@ -7,6 +7,65 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const dataDir = path.join(__dirname, 'data');
 const secretPath = path.join(dataDir, '.jwt_secret');
+const schedulePath = path.join(dataDir, 'work_schedule.json');
+
+// =============================================================================
+// 0. CONTROL DE HORARIO LABORAL (07:00 AM a 19:00 / 07:00 PM - Hora Bolivia)
+// =============================================================================
+export function getWorkScheduleConfig() {
+  try {
+    if (fs.existsSync(schedulePath)) {
+      const parsed = JSON.parse(fs.readFileSync(schedulePath, 'utf8'));
+      return {
+        enabled: parsed.enabled !== undefined ? Boolean(parsed.enabled) : true,
+        openHour: Number.isFinite(Number(parsed.openHour)) ? Number(parsed.openHour) : 7,
+        closeHour: Number.isFinite(Number(parsed.closeHour)) ? Number(parsed.closeHour) : 19
+      };
+    }
+  } catch {
+    // ignore read error and use default 07:00 - 19:00
+  }
+  return { enabled: true, openHour: 7, closeHour: 19 };
+}
+
+export function saveWorkScheduleConfig(newConfig = {}) {
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
+  const current = getWorkScheduleConfig();
+  const updated = {
+    enabled: newConfig.enabled !== undefined ? Boolean(newConfig.enabled) : current.enabled,
+    openHour: Number.isFinite(Number(newConfig.openHour)) ? Math.max(0, Math.min(23, Number(newConfig.openHour))) : current.openHour,
+    closeHour: Number.isFinite(Number(newConfig.closeHour)) ? Math.max(1, Math.min(24, Number(newConfig.closeHour))) : current.closeHour
+  };
+  fs.writeFileSync(schedulePath, JSON.stringify(updated, null, 2));
+  return updated;
+}
+
+export function checkWorkScheduleAccess(role = 'VENTAS') {
+  const cfg = getWorkScheduleConfig();
+  // Obtener hora actual de Bolivia (America/La_Paz, UTC-4)
+  const now = new Date();
+  const boliviaTimeStr = now.toLocaleString('en-US', { timeZone: 'America/La_Paz', hour12: false });
+  const boliviaDate = new Date(boliviaTimeStr);
+  const currentHour = Number.isFinite(boliviaDate.getHours()) ? boliviaDate.getHours() : now.getHours();
+  const currentMinute = Number.isFinite(boliviaDate.getMinutes()) ? boliviaDate.getMinutes() : now.getMinutes();
+  const formattedTime = `${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')}`;
+  const scheduleLabel = `${String(cfg.openHour).padStart(2, '0')}:00 a ${String(cfg.closeHour).padStart(2, '0')}:00`;
+
+  const isWithinHours = !cfg.enabled || (currentHour >= cfg.openHour && currentHour < cfg.closeHour);
+  const isSuperAdmin = role === 'SUPER_ADMIN';
+
+  return {
+    ...cfg,
+    currentHour,
+    currentMinute,
+    formattedTime,
+    scheduleLabel,
+    isWithinHours,
+    allowed: isSuperAdmin || isWithinHours
+  };
+}
 
 // =============================================================================
 // 1. PERSISTENT CRYPTOGRAPHIC SECRET FOR JWT SIGNING (HS256)
@@ -385,6 +444,16 @@ export function createAuthMiddleware(db) {
         success: false,
         code: 'USER_INACTIVE',
         error: 'Tu cuenta fue desactivada o eliminada. Contacta al administrador.'
+      });
+    }
+
+    // Verificar Horario Laboral (07:00 AM a 07:00 PM) para todos excepto SUPER_ADMIN
+    const scheduleAccess = checkWorkScheduleAccess(user.role);
+    if (!scheduleAccess.allowed) {
+      return res.status(401).json({
+        success: false,
+        code: 'WORK_HOURS_CLOSED',
+        error: `🔒 Horario laboral finalizado (${scheduleAccess.scheduleLabel}). El sistema se cerró automáticamente por seguridad.`
       });
     }
 

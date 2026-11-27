@@ -198,6 +198,26 @@ function describeAuditEvent(log) {
         subtitle: `Usuario: ${log.actor_name}`,
         changes: []
       };
+    case 'OUT_OF_HOURS_BLOCKED':
+      return {
+        category: 'SECURITY',
+        badgeLabel: '🚨 INTENTO FUERA DE HORARIO',
+        badgeColor: '#f43f5e',
+        badgeBg: 'rgba(244, 63, 94, 0.2)',
+        title: `Intento bloqueado de ingreso fuera de horario laboral (${log.target})`,
+        subtitle: `Intentó entrar a las ${d.attempted_at || ''} hrs (Horario permitido: ${d.schedule || '07:00 a 19:00'})`,
+        changes: ['Acceso bloqueado automáticamente por seguridad de horario laboral']
+      };
+    case 'WORK_SCHEDULE_UPDATED':
+      return {
+        category: 'SECURITY',
+        badgeLabel: 'AJUSTE HORARIO LABORAL',
+        badgeColor: '#FFC107',
+        badgeBg: 'rgba(255, 193, 7, 0.16)',
+        title: `Configuró el Horario Laboral (${log.target})`,
+        subtitle: d.enabled ? `Bloqueo activo de ${d.openHour}:00 a ${d.closeHour}:00 hrs` : 'Bloqueo de horario pausado temporalmente',
+        changes: []
+      };
     default:
       return {
         category: 'OTHER',

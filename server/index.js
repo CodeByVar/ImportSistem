@@ -21,7 +21,10 @@ import {
   createAuthMiddleware,
   requireRoles,
   logSecurityEvent,
-  getClientIp
+  getClientIp,
+  getWorkScheduleConfig,
+  saveWorkScheduleConfig,
+  checkWorkScheduleAccess
 } from './security.js';
 import {
   createDatabaseBackup,
@@ -4605,6 +4608,27 @@ app.post('/api/users/login', (req, res) => {
       return res.status(403).json({ success: false, error: 'Esta cuenta de usuario se encuentra inactiva' });
     }
 
+    // 2. Verificar Horario Laboral (07:00 AM - 07:00 PM) — Solo SUPER_ADMIN puede entrar fuera de horario
+    const scheduleAccess = checkWorkScheduleAccess(user.role);
+    if (!scheduleAccess.allowed) {
+      logSecurityEvent(db, {
+        action: 'OUT_OF_HOURS_BLOCKED',
+        actorUser: user,
+        target: user.username,
+        ip,
+        details: {
+          actor_name: user.name.toUpperCase(),
+          attempted_at: scheduleAccess.formattedTime,
+          schedule: scheduleAccess.scheduleLabel
+        }
+      });
+      return res.status(403).json({
+        success: false,
+        code: 'WORK_HOURS_CLOSED',
+        error: `🔒 Sistema Cerrado por Horario Laboral: El acceso para colaboradores está habilitado únicamente de ${scheduleAccess.scheduleLabel} hrs (Hora actual: ${scheduleAccess.formattedTime}). Fuera de horario solo puede ingresar el Super Administrador.`
+      });
+    }
+
     // Success: reset failure counter and issue signed HS256 JWT
     resetLoginFailures(req, rateKey);
     const token = signToken(user);
@@ -4831,6 +4855,44 @@ app.get('/api/system/backups', requireRoles('SUPER_ADMIN', 'ADMIN'), (req, res) 
   try {
     const backups = listDatabaseBackups();
     res.json({ success: true, data: backups });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Consultar y configurar Horario Laboral (07:00 AM - 07:00 PM)
+app.get('/api/system/work-schedule', (req, res) => {
+  try {
+    const status = checkWorkScheduleAccess(req.user?.role || 'VENTAS');
+    res.json({ success: true, data: status });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/system/work-schedule', requireRoles('SUPER_ADMIN'), (req, res) => {
+  try {
+    const updated = saveWorkScheduleConfig(req.body || {});
+    const status = checkWorkScheduleAccess('SUPER_ADMIN');
+    logSecurityEvent(db, {
+      action: 'WORK_SCHEDULE_UPDATED',
+      actorUser: req.user,
+      target: `${String(updated.openHour).padStart(2, '0')}:00-${String(updated.closeHour).padStart(2, '0')}:00`,
+      ip: getClientIp(req),
+      details: {
+        actor_name: (req.user?.name || 'ABEL').toUpperCase(),
+        enabled: updated.enabled,
+        openHour: updated.openHour,
+        closeHour: updated.closeHour
+      }
+    });
+    res.json({
+      success: true,
+      data: status,
+      message: updated.enabled
+        ? `Horario laboral activo de ${String(updated.openHour).padStart(2, '0')}:00 a ${String(updated.closeHour).padStart(2, '0')}:00 hrs.`
+        : 'Restricción de horario laboral desactivada temporalmente.'
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

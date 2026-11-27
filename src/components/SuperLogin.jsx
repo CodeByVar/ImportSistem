@@ -27,9 +27,24 @@ export default function SuperLogin({ onLoginSuccess }) {
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [showAccessModal, setShowAccessModal] = useState(false);
 
-  // Autenticación directa para Modo Demo (sin depender de API ni exigir PIN válido)
+  // Autenticación directa para Modo Demo (con verificación de horario 07:00 AM - 07:00 PM)
   const triggerDemoLogin = (rawUser, provider = 'credentials') => {
     const demoUser = buildDemoUser(rawUser || username || 'Abel', provider);
+    const savedCfg = JSON.parse(localStorage.getItem('siscontrol_work_schedule_v1') || 'null') || {
+      enabled: true,
+      openHour: 7,
+      closeHour: 19
+    };
+    const nowHour = new Date().getHours();
+    const isWithinHours = !savedCfg.enabled || (nowHour >= savedCfg.openHour && nowHour < savedCfg.closeHour);
+
+    if (demoUser.role !== 'SUPER_ADMIN' && !isWithinHours) {
+      setErrorMessage(
+        `🔒 Sistema Cerrado por Horario Laboral: El acceso para colaboradores está habilitado únicamente de ${String(savedCfg.openHour).padStart(2, '0')}:00 a ${String(savedCfg.closeHour).padStart(2, '0')}:00 hrs. Fuera de horario solo puede ingresar el Super Administrador (abel).`
+      );
+      return;
+    }
+
     const session = {
       user: demoUser,
       token: DEMO_TOKEN,
@@ -40,7 +55,7 @@ export default function SuperLogin({ onLoginSuccess }) {
     localStorage.setItem('siscontrol_auth_session', JSON.stringify(session));
     localStorage.setItem('siscontrol_active_user', JSON.stringify(demoUser));
     setErrorMessage('');
-    setSuccessMessage(`¡Bienvenido a Importadora Rivero, ${demoUser.nombre}! (Modo Demo)`);
+    setSuccessMessage(`¡Bienvenido a Importadora Rivero, ${demoUser.nombre}!`);
     onLoginSuccess(demoUser, DEMO_TOKEN);
   };
 
@@ -346,11 +361,11 @@ export default function SuperLogin({ onLoginSuccess }) {
             </form>
           </div>
 
-          {/* Bottom Bar: Plataforma protegida + Solicitar acceso */}
+          {/* Bottom Bar: Horario Laboral 07:00 - 19:00 + Solicitar acceso */}
           <div className="flex flex-col gap-2 text-[11px] pt-4 text-neutral-400 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-1.5 font-semibold text-neutral-500">
-              <Check size={13} className="text-[#FF8C00] stroke-[3]" />
-              <span>Plataforma protegida</span>
+              <Lock size={12} className="text-[#FF8C00]" />
+              <span>Horario colaboradores: <strong>07:00 AM – 07:00 PM</strong></span>
             </div>
 
             <div>

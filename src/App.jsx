@@ -149,6 +149,32 @@ export default function App() {
     return () => window.removeEventListener('siscontrol:session-expired', onExpired);
   }, [handleLogout]);
 
+  // Cierre automático por Horario Laboral (07:00 AM a 07:00 PM / 19:00) para colaboradores (excepto SUPER_ADMIN)
+  useEffect(() => {
+    if (!authSession || !currentUser || currentUser.role === 'SUPER_ADMIN') return;
+
+    const checkSchedule = async () => {
+      try {
+        const res = await fetch('/api/system/work-schedule').then(r => r.json());
+        if (res.success && res.data && res.data.enabled && !res.data.isWithinHours) {
+          alert(`🔒 Horario Laboral Finalizado (${res.data.scheduleLabel} hrs).\nEl sistema se cerrará automáticamente por seguridad.`);
+          handleLogout();
+        }
+      } catch {
+        // Fallback por reloj local si no hay red
+        const h = new Date().getHours();
+        if (h < 7 || h >= 19) {
+          alert('🔒 Horario Laboral Finalizado (07:00 AM - 07:00 PM).\nEl sistema se cerrará automáticamente por seguridad.');
+          handleLogout();
+        }
+      }
+    };
+
+    checkSchedule();
+    const timer = setInterval(checkSchedule, 30000);
+    return () => clearInterval(timer);
+  }, [authSession, currentUser, handleLogout]);
+
   // Verify token against backend and sync authoritative user role on load
   useEffect(() => {
     if (!authSession?.token) return;
