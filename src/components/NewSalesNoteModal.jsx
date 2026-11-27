@@ -80,27 +80,27 @@ function ProductSearchCombobox({ products, item, onSelectProduct, onClearProduct
       : Number(item.stock_now || 0);
 
     return (
-      <div className="bg-cyan-50/70 dark:bg-cyan-950/30 border border-cyan-200 dark:border-cyan-500/35 rounded-xl p-2 sm:p-2.5 flex items-center justify-between gap-2 min-h-[44px]">
+      <div className="bg-cyan-50/70 dark:bg-cyan-950/30 border border-cyan-200 dark:border-cyan-500/35 rounded-xl px-3 py-2 flex items-center justify-between gap-2.5 min-h-[44px] w-full">
         <div className="flex flex-col overflow-hidden flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 overflow-hidden">
-            <span className="font-mono font-black text-cyan-700 dark:text-cyan-300 text-[11px] bg-cyan-100/70 dark:bg-cyan-500/20 px-1.5 py-0.5 rounded shrink-0 border border-cyan-200 dark:border-cyan-500/30">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-mono font-black text-cyan-800 dark:text-cyan-300 text-xs bg-cyan-100 dark:bg-cyan-500/20 px-2 py-0.5 rounded-md shrink-0 border border-cyan-300/80 dark:border-cyan-500/30">
               {item.sku}
             </span>
-            <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
+            <span className="text-xs sm:text-[13px] font-extrabold text-slate-900 dark:text-white leading-tight break-words line-clamp-2" title={item.description}>
               {item.description}
             </span>
           </div>
           <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 flex gap-2 items-center flex-wrap">
             {isStoreOrigin ? (
-              <span className="font-extrabold text-amber-700 dark:text-amber-300 bg-amber-100/80 dark:bg-amber-500/20 px-1.5 py-0.5 rounded">
-                Salida de Tienda (No descuenta stock Almacén)
+              <span className="font-extrabold text-amber-800 dark:text-amber-300 bg-amber-100/90 dark:bg-amber-500/20 px-1.5 py-0.5 rounded text-[10px]">
+                Stock Tienda (No descuenta Almacén)
               </span>
             ) : (
               <span className={`font-bold ${displayStock > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400'}`}>
                 Stock Almacén: {Math.max(0, displayStock)} u.
               </span>
             )}
-            <span>• {item.units_per_box || 1} u/cj</span>
+            <span className="font-semibold">• {item.units_per_box || 1} u/cj</span>
           </div>
         </div>
         <button
@@ -1838,17 +1838,17 @@ export default function NewSalesNoteModal({
                 return (
                   <div 
                     key={it.id} 
-                    className={`rounded-xl border p-3 sm:p-3.5 bg-white dark:bg-slate-800/80 shadow-xs flex flex-col lg:flex-row lg:items-center gap-3 transition-colors ${
+                    className={`rounded-xl border p-3 sm:p-3.5 bg-white dark:bg-slate-800/80 shadow-xs flex flex-col lg:flex-row lg:items-start gap-2.5 transition-colors ${
                       rowShortage
                         ? 'border-rose-400 dark:border-rose-500/70 bg-rose-50/30 dark:bg-rose-950/15'
                         : 'border-slate-200 dark:border-slate-700/80'
                     }`}
                   >
-                    {/* 1. Producto (Buscador Combobox) */}
-                    <div className="flex-1 lg:flex-[2.5] min-w-0">
-                      <div className="flex items-center justify-between mb-1 lg:mb-0.5">
-                        <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                          #{idx + 1} Producto ({it.product_id ? (isRowFromStore ? 'Salida de Tienda' : `Stock Almacén: ${Math.max(0, displayStock)} u.`) : 'Buscador'}) *
+                    {/* 1. Producto (Buscador Combobox con ancho amplio para ver SKU y Nombre completo) */}
+                    <div className="flex-1 min-w-0 w-full">
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 truncate">
+                          #{idx + 1} Producto ({it.product_id ? (isRowFromStore ? 'Salida de Tienda' : `Stock Almacén: ${Math.max(0, displayStock)} u.`) : 'Código y Nombre'}) *
                         </label>
                         {/* Mobile delete button placed conveniently in top right */}
                         <button 
@@ -1921,10 +1921,10 @@ export default function NewSalesNoteModal({
                       )}
                     </div>
 
-                    {/* Mobile Grid for Quantities & Mode (On Desktop it flows inline) */}
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:flex lg:items-center gap-2.5 lg:gap-3">
+                    {/* Controles Compactos: Modalidad, Cant. (3 cifras), Precio (4 cifras), Origen y Subtotal */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 lg:flex lg:items-start gap-2 shrink-0">
                       {/* 2. Modalidad */}
-                      <div className="lg:w-28">
+                      <div className="lg:w-[88px] shrink-0">
                         <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
                           Modalidad
                         </label>
@@ -1932,39 +1932,41 @@ export default function NewSalesNoteModal({
                           className="form-select text-xs font-bold h-10 w-full"
                           value={it.sale_mode}
                           onChange={e => handleSaleModeChange(it.id, e.target.value)}
-                          style={{ color: isBox ? '#0284c7' : '#d97706', padding: '6px 10px', lineHeight: '1.3' }}
+                          style={{ color: isBox ? '#0284c7' : '#d97706', padding: '6px 8px', lineHeight: '1.3' }}
                         >
                           <option value="CAJA">Caja</option>
                           <option value="UNIDAD">Unidad</option>
                         </select>
                       </div>
 
-                      {/* 3. Cajas & U/Cj (o Cantidad Unidades) */}
+                      {/* 3. Cajas & U/Cj (o Cantidad Unidades compacta para max 3 cifras) */}
                       {isBox ? (
-                        <div className="col-span-1 sm:col-span-2 lg:w-36 grid grid-cols-2 gap-1.5">
+                        <div className="col-span-1 lg:w-[112px] grid grid-cols-2 gap-1 shrink-0">
                           <div>
-                            <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                            <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1 text-center">
                               Cajas
                             </label>
                             <input 
                               type="number" 
                               min="1"
-                              className="form-input text-xs font-black text-center h-10 w-full"
-                              style={{ padding: '6px 6px', lineHeight: '1.3' }}
+                              max="999"
+                              className="form-input text-xs font-black text-center h-10 w-full font-mono"
+                              style={{ padding: '4px 4px', lineHeight: '1.3' }}
                               value={it.boxes_count}
                               onChange={e => handleUpdateItem(it.id, 'boxes_count', e.target.value)}
                               required
                             />
                           </div>
                           <div>
-                            <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                            <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1 text-center">
                               U/Cj
                             </label>
                             <input 
                               type="number" 
                               min="1"
-                              className="form-input text-xs font-bold text-center h-10 w-full"
-                              style={{ padding: '6px 6px', lineHeight: '1.3' }}
+                              max="999"
+                              className="form-input text-xs font-bold text-center h-10 w-full font-mono"
+                              style={{ padding: '4px 4px', lineHeight: '1.3' }}
                               value={it.units_per_box}
                               onChange={e => handleUpdateItem(it.id, 'units_per_box', e.target.value)}
                               required
@@ -1972,15 +1974,16 @@ export default function NewSalesNoteModal({
                           </div>
                         </div>
                       ) : (
-                        <div className="col-span-1 sm:col-span-2 lg:w-36">
-                          <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
-                            Cant. Unidades
+                        <div className="col-span-1 lg:w-[76px] shrink-0">
+                          <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1 text-center" title="Cantidad de Unidades">
+                            Cant. Unid.
                           </label>
                           <input 
                             type="number" 
                             min="1"
-                            className="form-input text-xs font-black text-center h-10 w-full"
-                            style={{ padding: '6px 8px', lineHeight: '1.3' }}
+                            max="999"
+                            className="form-input text-xs font-black text-center h-10 w-full font-mono"
+                            style={{ padding: '6px 4px', lineHeight: '1.3' }}
                             value={it.quantity}
                             onChange={e => handleUpdateItem(it.id, 'quantity', e.target.value)}
                             required
@@ -1988,16 +1991,16 @@ export default function NewSalesNoteModal({
                         </div>
                       )}
 
-                      {/* 4. Precio Unitario & Quick Chips (Oculto en Reposición interna) */}
+                      {/* 4. Precio Unitario compacto para 4 cifras & Quick Chips */}
                       {!isRestockMode && (
-                      <div className="col-span-2 sm:col-span-1 lg:w-44">
+                      <div className="col-span-2 sm:col-span-1 lg:w-[132px] shrink-0">
                         <div className="flex justify-between items-center mb-1">
                           <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                            Precio Unit. (Bs)
+                            Precio (Bs)
                           </label>
                           {it.price_type && (
                             <span className="text-[10px] font-extrabold text-cyan-600 dark:text-cyan-400">
-                              {it.price_type === 'caja' ? 'Caja' : it.price_type === 'mayor' ? 'Mayor' : it.price_type === 'especial' ? 'Esp' : 'Manual'}
+                              {it.price_type === 'caja' ? 'Caja' : it.price_type === 'mayor' ? 'Mayor' : it.price_type === 'especial' ? 'Esp' : 'Man'}
                             </span>
                           )}
                         </div>
@@ -2005,8 +2008,9 @@ export default function NewSalesNoteModal({
                           type="number" 
                           step="0.01" 
                           min="0"
-                          className="form-input text-xs font-black text-right h-9 w-full text-slate-900 dark:text-white" 
-                          style={{ padding: '6px 10px', lineHeight: '1.3' }}
+                          max="99999"
+                          className="form-input text-xs font-black text-right h-10 w-full font-mono text-slate-900 dark:text-white" 
+                          style={{ padding: '6px 8px', lineHeight: '1.3' }}
                           placeholder="0.00"
                           value={it.unit_price}
                           onChange={e => {
@@ -2024,69 +2028,53 @@ export default function NewSalesNoteModal({
                             <button
                               type="button"
                               onClick={() => handleUpdateItem(it.id, { unit_price: it.wholesale_price, price_type: 'mayor' })}
-                              className={`text-[10px] px-1.5 py-0.5 rounded font-bold cursor-pointer transition-colors ${
+                              className={`text-[9px] px-1 py-0.5 rounded font-bold cursor-pointer transition-colors ${
                                 it.price_type === 'mayor'
                                   ? 'bg-cyan-100 text-cyan-800 dark:bg-cyan-500/30 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-500/50'
                                   : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 hover:bg-slate-200 border border-slate-200 dark:border-slate-700'
                               }`}
                             >
-                              May: {it.wholesale_price}
+                              M:{it.wholesale_price}
                             </button>
                           )}
                           {it.box_price > 0 && (
                             <button
                               type="button"
                               onClick={() => handleUpdateItem(it.id, { unit_price: it.box_price, price_type: 'caja' })}
-                              className={`text-[10px] px-1.5 py-0.5 rounded font-bold cursor-pointer transition-colors ${
+                              className={`text-[9px] px-1 py-0.5 rounded font-bold cursor-pointer transition-colors ${
                                 it.price_type === 'caja'
                                   ? 'bg-amber-100 text-amber-900 dark:bg-amber-500/30 dark:text-amber-300 border border-amber-300 dark:border-amber-500/50'
                                   : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 hover:bg-slate-200 border border-slate-200 dark:border-slate-700'
                               }`}
                             >
-                              Caj: {it.box_price}
+                              C:{it.box_price}
                             </button>
                           )}
                           {it.special_price > 0 && (
                             <button
                               type="button"
                               onClick={() => handleUpdateItem(it.id, { unit_price: it.special_price, price_type: 'especial' })}
-                              className={`text-[10px] px-1.5 py-0.5 rounded font-bold cursor-pointer transition-colors ${
+                              className={`text-[9px] px-1 py-0.5 rounded font-bold cursor-pointer transition-colors ${
                                 it.price_type === 'especial'
                                   ? 'bg-purple-100 text-purple-900 dark:bg-purple-500/30 dark:text-purple-300 border border-purple-300 dark:border-purple-500/50'
                                   : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 hover:bg-slate-200 border border-slate-200 dark:border-slate-700'
                               }`}
                             >
-                              Esp: {it.special_price}
-                            </button>
-                          )}
-                          {it.sale_price > 0 && it.sale_price !== it.wholesale_price && it.sale_price !== it.box_price && (
-                            <button
-                              type="button"
-                              onClick={() => handleUpdateItem(it.id, { unit_price: it.sale_price, price_type: 'unit' })}
-                              className={`text-[10px] px-1.5 py-0.5 rounded font-bold cursor-pointer transition-colors ${
-                                it.price_type === 'unit'
-                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/30 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-500/50'
-                                  : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 hover:bg-slate-200 border border-slate-200 dark:border-slate-700'
-                              }`}
-                            >
-                              Det: {it.sale_price}
+                              E:{it.special_price}
                             </button>
                           )}
                         </div>
                       </div>
                       )}
-                    </div>
 
-                    {/* 5. Alistar en & Subtotal */}
-                    <div className="flex items-center justify-between lg:justify-end gap-3 pt-2.5 lg:pt-0 border-t border-slate-100 dark:border-slate-700/60 lg:border-t-0">
-                      {/* Alistar en */}
-                      <div className="w-36 sm:w-40 lg:w-36">
+                      {/* 5. Alistar en */}
+                      <div className="col-span-1 lg:w-[98px] shrink-0">
                         <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
                           Alistar en:
                         </label>
                         <select 
                           className="form-select text-xs font-bold h-10 w-full"
-                          style={{ padding: '6px 10px', lineHeight: '1.3' }}
+                          style={{ padding: '6px 6px', lineHeight: '1.3' }}
                           value={it.warehouse_source || 'ALMACEN'}
                           onChange={e => handleUpdateItem(it.id, 'warehouse_source', e.target.value)}
                         >
@@ -2096,50 +2084,42 @@ export default function NewSalesNoteModal({
                         </select>
                       </div>
 
-                      {/* Subtotal (En reposición muestra total unidades/cajas, sin Bs) */}
-                      <div className="text-right lg:w-28 shrink-0">
-                        {isRestockMode ? (
-                          <>
-                            <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
-                              Cantidad
-                            </label>
-                            <div className="text-sm sm:text-base font-black text-indigo-600 dark:text-indigo-400 font-mono">
-                              {isBox ? `${parseInt(it.boxes_count || 0, 10)} cj` : `${parseInt(it.quantity || 0, 10)} u.`}
-                            </div>
-                            {isBox && (
-                              <span className="text-[10px] text-slate-400 block">
-                                {(parseInt(it.boxes_count || 0, 10) * parseInt(it.units_per_box || 1, 10))} u.
-                              </span>
-                            )}
-                          </>
-                        ) : (
-                          <>
-                            <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
-                              Subtotal
-                            </label>
-                            <div className="text-sm sm:text-base font-black text-emerald-600 dark:text-emerald-400 font-mono">
-                              Bs {rowSubtotal.toFixed(2)}
-                            </div>
-                            {isBox && (
-                              <span className="text-[10px] text-slate-400 block">
-                                {(parseInt(it.boxes_count || 0, 10) * parseInt(it.units_per_box || 1, 10))} u.
-                              </span>
-                            )}
-                          </>
-                        )}
-                      </div>
+                      {/* 6. Subtotal + Trash */}
+                      <div className="col-span-1 flex items-start justify-end gap-1.5 lg:w-[110px] shrink-0">
+                        <div className="text-right">
+                          {isRestockMode ? (
+                            <>
+                              <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                                Cantidad
+                              </label>
+                              <div className="text-sm font-black text-indigo-600 dark:text-indigo-400 font-mono leading-10">
+                                {isBox ? `${parseInt(it.boxes_count || 0, 10)} cj` : `${parseInt(it.quantity || 0, 10)} u.`}
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                                Subtotal
+                              </label>
+                              <div className="text-xs sm:text-sm font-black text-emerald-600 dark:text-emerald-400 font-mono leading-10 whitespace-nowrap">
+                                Bs {rowSubtotal.toFixed(2)}
+                              </div>
+                            </>
+                          )}
+                        </div>
 
-                      {/* Desktop Trash button */}
-                      <div className="hidden lg:flex items-center justify-center shrink-0 pt-4">
-                        <button 
-                          type="button" 
-                          onClick={() => handleRemoveItem(it.id)}
-                          className="p-2 text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/20 rounded-lg transition-colors cursor-pointer"
-                          disabled={items.length <= 1}
-                          title="Eliminar fila"
-                        >
-                          <Trash2 size={17} />
-                        </button>
+                        {/* Desktop Trash button */}
+                        <div className="hidden lg:flex items-center justify-center shrink-0 pt-6">
+                          <button 
+                            type="button" 
+                            onClick={() => handleRemoveItem(it.id)}
+                            className="p-1.5 text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/20 rounded-lg transition-colors cursor-pointer"
+                            disabled={items.length <= 1}
+                            title="Eliminar fila"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
