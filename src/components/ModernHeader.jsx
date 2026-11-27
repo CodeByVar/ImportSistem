@@ -303,8 +303,8 @@ export default function ModernHeader({
     },
     {
       id: 'weekly',
-      title: 'Planilla de Despachos Semanal',
-      subtitle: 'Resumen consolidado de entregas de toda la semana',
+      title: 'Reportes & Resumen Semanal',
+      subtitle: 'Reporte automático de ventas, vendedores, clientes y salidas L-S',
       icon: Calendar,
       color: 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/15',
       action: () => { setActiveTab && setActiveTab('weekly'); setIsSearchOpen(false); }

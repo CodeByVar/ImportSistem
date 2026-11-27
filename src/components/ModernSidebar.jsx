@@ -18,7 +18,7 @@ const ALL_NAV_ITEMS = [
   { key: 'dashboard',   label: 'General / Dashboard',          icon: LayoutDashboard },
   { key: 'notes',       label: 'Notas de Despacho & Venta',    icon: FileText },
   { key: 'inventory',   label: 'Stock Inventario',             icon: Package },
-  { key: 'weekly',      label: 'Plantilla de Despachos Semanal (L-S)', icon: CalendarDays },
+  { key: 'weekly',      label: 'Reportes & Resumen Semanal',   icon: CalendarDays },
   { key: 'movements',   label: 'Kardex / Movimientos',         icon: History },
   { key: 'containers',  label: 'Embarques & Contenedores',     icon: Ship },
 ];

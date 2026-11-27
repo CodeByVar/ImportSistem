@@ -78,53 +78,68 @@ export default function MobileBottomNav({
           </button>
         )}
 
-        {/* 4. Planilla Semanal (L-S) */}
-        {allowed.includes('weekly') && (
+        {/* 4. Clientes & Deudas (Opción 1 activada directo en barra móvil) */}
+        {perms.showCustomers && onOpenCustomers ? (
+          <button
+            type="button"
+            onClick={onOpenCustomers}
+            className="flex-1 min-w-0 flex flex-col items-center justify-center py-1 px-1 rounded-xl text-slate-500 hover:text-[#FF8C00] dark:text-slate-400 dark:hover:text-[#FFC107] transition-all cursor-pointer"
+          >
+            <div className="p-1 rounded-lg">
+              <Users size={19} strokeWidth={2} />
+            </div>
+            <span className="text-[10px] mt-0.5 tracking-tight font-bold truncate w-full text-center">Clientes</span>
+          </button>
+        ) : allowed.includes('weekly') ? (
           <button
             type="button"
             onClick={() => setActiveTab('weekly')}
             className={`flex-1 min-w-0 flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer ${
               activeTab === 'weekly'
-                ? 'text-indigo-600 dark:text-indigo-400 font-extrabold'
+                ? 'text-[#FF8C00] dark:text-[#FFC107] font-extrabold'
                 : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
             }`}
           >
-            <div className={`p-1 rounded-lg ${activeTab === 'weekly' ? 'bg-indigo-50 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400' : ''}`}>
+            <div className={`p-1 rounded-lg ${activeTab === 'weekly' ? 'bg-[#FF8C00]/15 dark:bg-[#FF8C00]/20 text-[#FF8C00] dark:text-[#FFC107]' : ''}`}>
               <CalendarDays size={19} strokeWidth={activeTab === 'weekly' ? 2.5 : 1.8} />
             </div>
-            <span className="text-[10px] mt-0.5 tracking-tight font-bold truncate w-full text-center">Semanal</span>
+            <span className="text-[10px] mt-0.5 tracking-tight font-bold truncate w-full text-center">Reportes</span>
           </button>
-        )}
+        ) : null}
 
-        {/* 5. Dashboard / General */}
+        {/* 5. Dashboard / Reportes */}
         {allowed.includes('dashboard') && (
           <button
             type="button"
             onClick={() => setActiveTab('dashboard')}
             className={`flex-1 min-w-0 flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer ${
               activeTab === 'dashboard'
-                ? 'text-orange-600 dark:text-orange-400 font-extrabold'
+                ? 'text-[#FF8C00] dark:text-[#FFC107] font-extrabold'
                 : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
             }`}
           >
-            <div className={`p-1 rounded-lg ${activeTab === 'dashboard' ? 'bg-orange-50 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400' : ''}`}>
+            <div className={`p-1 rounded-lg ${activeTab === 'dashboard' ? 'bg-[#FF8C00]/15 dark:bg-[#FF8C00]/20 text-[#FF8C00] dark:text-[#FFC107]' : ''}`}>
               <LayoutDashboard size={19} strokeWidth={activeTab === 'dashboard' ? 2.5 : 1.8} />
             </div>
             <span className="text-[10px] mt-0.5 tracking-tight font-bold truncate w-full text-center">Dashboard</span>
           </button>
         )}
 
-        {/* 6. Clientes (si el rol no tiene dashboard) */}
-        {!allowed.includes('dashboard') && perms.showCustomers && onOpenCustomers && (
+        {/* 6. Reportes (si el rol tiene weekly en móvil) */}
+        {allowed.includes('weekly') && perms.showCustomers && (
           <button
             type="button"
-            onClick={onOpenCustomers}
-            className="flex-1 min-w-0 flex flex-col items-center justify-center py-1 px-1 rounded-xl text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-all cursor-pointer"
+            onClick={() => setActiveTab('weekly')}
+            className={`flex-1 min-w-0 flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer ${
+              activeTab === 'weekly'
+                ? 'text-[#FF8C00] dark:text-[#FFC107] font-extrabold'
+                : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+            }`}
           >
-            <div className="p-1 rounded-lg">
-              <Users size={19} strokeWidth={1.8} />
+            <div className={`p-1 rounded-lg ${activeTab === 'weekly' ? 'bg-[#FF8C00]/15 dark:bg-[#FF8C00]/20 text-[#FF8C00] dark:text-[#FFC107]' : ''}`}>
+              <CalendarDays size={19} strokeWidth={activeTab === 'weekly' ? 2.5 : 1.8} />
             </div>
-            <span className="text-[10px] mt-0.5 tracking-tight font-bold truncate w-full text-center">Clientes</span>
+            <span className="text-[10px] mt-0.5 tracking-tight font-bold truncate w-full text-center">Reportes</span>
           </button>
         )}
       </div>

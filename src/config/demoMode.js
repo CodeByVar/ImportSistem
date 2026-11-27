@@ -4,10 +4,16 @@
 // Para desactivar el modo demo cuando conectes el backend real:
 // Cambia DEMO_MODE = false o define VITE_DEMO_MODE=false en tus variables de entorno.
 
+const isLocalEnvironment =
+  typeof window !== 'undefined' &&
+  (window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    window.location.hostname.startsWith('192.168.'));
+
 export const DEMO_MODE =
   import.meta.env.VITE_DEMO_MODE !== undefined
     ? String(import.meta.env.VITE_DEMO_MODE).toLowerCase() === 'true'
-    : true;
+    : !isLocalEnvironment;
 
 export const DEMO_TOKEN = 'demo-jwt-token-importadora-rivero-2026';
 
@@ -982,16 +988,33 @@ export async function handleDemoApiRequest(urlStr, init = {}) {
     }
   }
 
-  // 6. Weekly Dispatches
+  // 6. Weekly Dispatches / Reportes Semanales
   if (path.startsWith('/api/weekly-dispatches')) {
+    const demoRows = state.products.map((p, idx) => ({
+      ...p,
+      auto_qty_l: idx === 0 ? 40 : idx === 1 ? 50 : 0,
+      auto_qty_m: idx === 1 ? 50 : 0,
+      auto_qty_mi: 0,
+      auto_qty_j: 0,
+      auto_qty_v: 0,
+      auto_qty_s: 0,
+      auto_total_sold: idx === 0 ? 40 : idx === 1 ? 100 : 0,
+      auto_avg_price: p.box_price || p.wholesale_price || p.sale_price || 0,
+      auto_min_price: p.box_price || p.wholesale_price || p.sale_price || 0,
+      auto_max_price: p.box_price || p.wholesale_price || p.sale_price || 0,
+      auto_total_revenue: (idx === 0 ? 40 : idx === 1 ? 100 : 0) * Number(p.box_price || p.sale_price || 0),
+      notes_summary: idx <= 1 ? 'IR101A: FERRETERÍA INDUSTRIAL LA PAZ (ABEL)' : ''
+    })).filter(r => r.auto_total_sold > 0);
+
     return jsonResponse({
       success: true,
-      data: {
-        dispatches: state.dailyOrders,
-        summary: {
-          totalBoxes: state.dailyOrders.reduce((s, o) => s + Number(o.note_total_boxes || o.boxes_count || 0), 0),
-          totalAmount: state.dailyOrders.reduce((s, o) => s + Number(o.note_total || o.total_amount || 0), 0)
-        }
+      total: demoRows.length,
+      data: demoRows,
+      kpiSummary: {
+        totalProductsSold: demoRows.length,
+        totalUnitsSold: 140,
+        totalUnitsPending: 90,
+        totalRevenueSold: 9140
       }
     });
   }
@@ -1124,3 +1147,4 @@ export async function handleDemoApiRequest(urlStr, init = {}) {
     data: []
   });
 }
+
