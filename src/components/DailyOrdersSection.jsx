@@ -154,6 +154,7 @@ export default function DailyOrdersSection({
   });
   const [supervisor, setSupervisor] = useState(() => getActiveSessionUserName());
   const [deliveryModalRow, setDeliveryModalRow] = useState(null);
+  const [orderBoardTab, setOrderBoardTab] = useState('ALMACEN'); // 'ALMACEN' | 'TIENDA' | 'TODOS'
 
   const handleConfirmRestock = async (row) => {
     if (!row?.sales_note_id) return;
@@ -430,6 +431,66 @@ export default function DailyOrdersSection({
   const correccionesList = sideItems.filter(i => i.section === 'CORRECCIONES');
   const esperaReservaSideList = sideItems.filter(i => i.section === 'ESPERA_RESERVA');
 
+  // Clasificación inteligente de filas: Almacén vs Tienda (Mostrador) vs Enviado desde Tienda a Almacén
+  const classifyOrderRow = useCallback((row) => {
+    const delivType = String(row.note_delivery_type || '');
+    const obs = String(row.observations || '');
+    const cust = String(row.activity_or_customer || '');
+    const isRestock = row.note_type === 'REPOSICION_TIENDA' || String(row.sales_note_code || '').startsWith('REP-');
+    const isSentFromStoreToWarehouse =
+      delivType.includes('Enviado desde Tienda') || obs.includes('[TIENDA → ALMACÉN]');
+    const isQuickStoreSale =
+      !isRestock &&
+      !isSentFromStoreToWarehouse &&
+      (delivType.includes('Venta Rápida en Tienda') ||
+        delivType.includes('Mostrador') ||
+        obs.toUpperCase().includes('MOSTRADOR TIENDA') ||
+        cust.toUpperCase().includes('MOSTRADOR TIENDA'));
+
+    return {
+      isRestock,
+      isSentFromStoreToWarehouse,
+      isQuickStoreSale
+    };
+  }, []);
+
+  const boardStats = useMemo(() => {
+    let almacenCount = 0;
+    let tiendaCount = 0;
+    let sentFromStoreCount = 0;
+    let tiendaSalesTotal = 0;
+
+    rows.forEach(r => {
+      const c = classifyOrderRow(r);
+      if (c.isQuickStoreSale) {
+        tiendaCount += 1;
+        tiendaSalesTotal += Number(r.note_total || 0);
+      } else if (c.isRestock) {
+        almacenCount += 1;
+        tiendaCount += 1;
+      } else {
+        almacenCount += 1;
+        if (c.isSentFromStoreToWarehouse) sentFromStoreCount += 1;
+      }
+    });
+
+    return { almacenCount, tiendaCount, sentFromStoreCount, tiendaSalesTotal };
+  }, [rows, classifyOrderRow]);
+
+  const visibleRowsWithIndex = useMemo(() => {
+    return rows
+      .map((row, realIndex) => ({ row, realIndex, meta: classifyOrderRow(row) }))
+      .filter(({ meta }) => {
+        if (orderBoardTab === 'ALMACEN') {
+          return !meta.isQuickStoreSale;
+        }
+        if (orderBoardTab === 'TIENDA') {
+          return meta.isQuickStoreSale || meta.isRestock || meta.isSentFromStoreToWarehouse;
+        }
+        return true;
+      });
+  }, [rows, orderBoardTab, classifyOrderRow]);
+
   // Agrupar pre-reservas por camión / contenedor y luego por cliente
   const truckGroups = useMemo(() => {
     const groups = {};
@@ -704,6 +765,71 @@ export default function DailyOrdersSection({
         </div>
       </div>
 
+      {/* Selector de Bandeja: ORDEN DEL DÍA ALMACÉN vs ORDEN DEL DÍA TIENDA vs CONSOLIDADO */}
+      <div className="mb-4 p-2 rounded-2xl bg-slate-100/90 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setOrderBoardTab('ALMACEN')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-extrabold inline-flex items-center gap-2 transition-all cursor-pointer ${
+              orderBoardTab === 'ALMACEN'
+                ? 'bg-[#0D0D0D] text-white dark:bg-[#FF8C00] dark:text-[#0D0D0D] shadow-sm'
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50'
+            }`}
+          >
+            <Truck size={15} />
+            <span>📦 Orden del Día — ALMACÉN ({boardStats.almacenCount})</span>
+            {boardStats.sentFromStoreCount > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-[#FF8C00] text-white dark:bg-[#0D0D0D] dark:text-[#FFC107]">
+                {boardStats.sentFromStoreCount} de Tienda
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setOrderBoardTab('TIENDA')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-extrabold inline-flex items-center gap-2 transition-all cursor-pointer ${
+              orderBoardTab === 'TIENDA'
+                ? 'bg-[#FF8C00] text-white shadow-sm'
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50'
+            }`}
+          >
+            <Store size={15} />
+            <span>🏪 Orden del Día — TIENDA ({boardStats.tiendaCount})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setOrderBoardTab('TODOS')}
+            className={`px-3 py-2 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
+              orderBoardTab === 'TODOS'
+                ? 'bg-slate-800 text-white dark:bg-white dark:text-slate-900 shadow-sm'
+                : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:bg-slate-50'
+            }`}
+          >
+            <span>👁️ Todo Consolidado ({rows.length})</span>
+          </button>
+        </div>
+
+        <div className="text-[11px] font-bold text-slate-600 dark:text-slate-300 px-2">
+          {orderBoardTab === 'ALMACEN' && (
+            <span>Mostrando solo cargas y despachos para <strong>Almacén</strong> (sin ventas chicas de mostrador).</span>
+          )}
+          {orderBoardTab === 'TIENDA' && (
+            <span>
+              Planilla de <strong>Tienda</strong> (Ventas rápidas mostrador hoy:{' '}
+              <strong className="text-emerald-600 dark:text-emerald-400 font-mono">
+                Bs {boardStats.tiendaSalesTotal.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </strong>)
+            </span>
+          )}
+          {orderBoardTab === 'TODOS' && (
+            <span>Vista general consolidada de Almacén + Tienda.</span>
+          )}
+        </div>
+      </div>
+
       {errorMsg && (
         <div style={{
           background: 'rgba(244, 63, 94, 0.12)',
@@ -754,27 +880,63 @@ export default function DailyOrdersSection({
                   Cargando la orden del día para {activeDay.dateFull}...
                 </td>
               </tr>
-            ) : rows.length === 0 ? (
+            ) : visibleRowsWithIndex.length === 0 ? (
               <tr>
                 <td colSpan="9" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
                   <ClipboardList size={30} style={{ margin: '0 auto 8px', opacity: 0.6 }} />
-                  <div style={{ fontWeight: 700, color: 'var(--text-main)' }}>No hay actividades ni pedidos programados para este día</div>
+                  <div style={{ fontWeight: 700, color: 'var(--text-main)' }}>
+                    {orderBoardTab === 'TIENDA'
+                      ? 'No hay ventas rápidas de mostrador ni reposiciones en Tienda para este día'
+                      : 'No hay despachos ni cargas programadas en Almacén para este día'}
+                  </div>
                   <div style={{ fontSize: '0.78rem', marginTop: '6px' }}>
-                    Haz clic en <strong>"+ Agregar Fila"</strong> o en <strong>"Sincronizar Notas del Día"</strong> para importar las notas emitidas.
+                    Haz clic en <strong>"+ Nueva Nota"</strong> para registrar un pedido o venta rápida en tienda.
                   </div>
                 </td>
               </tr>
             ) : (
-              rows.map((row, index) => {
+              visibleRowsWithIndex.map(({ row, realIndex: index, meta }, displayIdx) => {
                 return (
                   <tr key={index}>
                     {/* N° */}
                     <td style={{ textAlign: 'center', fontWeight: 800, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
-                      {index + 1}
+                      {displayIdx + 1}
                     </td>
 
                     {/* Actividad o Cliente */}
                     <td>
+                      {meta.isSentFromStoreToWarehouse && (
+                        <div style={{ marginBottom: '4px' }}>
+                          <span style={{
+                            display: 'inline-block',
+                            padding: '2px 7px',
+                            borderRadius: '5px',
+                            fontSize: '0.65rem',
+                            fontWeight: 900,
+                            background: 'rgba(255, 140, 0, 0.16)',
+                            color: '#FF8C00',
+                            border: '1px solid rgba(255, 140, 0, 0.4)'
+                          }}>
+                            📲 ENVIADO DESDE TIENDA → CARGAR EN ALMACÉN
+                          </span>
+                        </div>
+                      )}
+                      {meta.isQuickStoreSale && (
+                        <div style={{ marginBottom: '4px' }}>
+                          <span style={{
+                            display: 'inline-block',
+                            padding: '2px 7px',
+                            borderRadius: '5px',
+                            fontSize: '0.65rem',
+                            fontWeight: 900,
+                            background: 'rgba(16, 185, 129, 0.16)',
+                            color: '#10b981',
+                            border: '1px solid rgba(16, 185, 129, 0.4)'
+                          }}>
+                            🏪 VENTA RÁPIDA EN TIENDA (MOSTRADOR)
+                          </span>
+                        </div>
+                      )}
                       {row.sales_note_id ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <button
@@ -1170,15 +1332,19 @@ export default function DailyOrdersSection({
             <RefreshCw size={24} className="animate-spin mx-auto mb-2 text-cyan-400" />
             <p className="text-xs font-bold">Cargando pedidos para {activeDay.dateFull}...</p>
           </div>
-        ) : rows.length === 0 ? (
+        ) : visibleRowsWithIndex.length === 0 ? (
           <div className="text-center p-6 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-200 dark:border-slate-700/60 text-slate-500 dark:text-slate-400">
             <ClipboardList size={28} className="mx-auto mb-2 text-slate-400 dark:text-slate-500" />
-            <div className="font-extrabold text-slate-800 dark:text-white text-sm">No hay pedidos programados para hoy</div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Usa "+ Nueva Nota" o "Sincronizar" para importar.</p>
+            <div className="font-extrabold text-slate-800 dark:text-white text-sm">
+              {orderBoardTab === 'TIENDA'
+                ? 'Sin ventas rápidas en Tienda hoy'
+                : 'No hay despachos para Almacén hoy'}
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Usa "+ Nueva Nota" para registrar.</p>
           </div>
         ) : (
-          rows.map((row, index) => {
-            const isRestockRow = row.note_type === 'REPOSICION_TIENDA' || String(row.sales_note_code || '').startsWith('REP-');
+          visibleRowsWithIndex.map(({ row, realIndex: index, meta }, displayIdx) => {
+            const isRestockRow = meta.isRestock;
             const acc = isRestockRow ? null : getAccountStatus(row);
             const isDelivered = row.status === 'ENTREGADO' || row.note_status === 'RECIBIDO';
             const cleanCustomer = (row.activity_or_customer || '').replace(/\s*\([A-Za-z0-9_-]+\)\s*$/, '') || 'Cliente';
@@ -1196,11 +1362,21 @@ export default function DailyOrdersSection({
                       : (acc ? acc.border : 'var(--border-glass)')
                 }}
               >
+                {meta.isSentFromStoreToWarehouse && (
+                  <div className="px-2.5 py-1 rounded-lg bg-[#FF8C00]/15 border border-[#FF8C00]/40 text-[#FF8C00] dark:text-[#FFC107] text-[10px] font-black uppercase tracking-wide">
+                    📲 Enviado desde Tienda → Cargar en Almacén
+                  </div>
+                )}
+                {meta.isQuickStoreSale && (
+                  <div className="px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/40 text-emerald-700 dark:text-emerald-300 text-[10px] font-black uppercase tracking-wide">
+                    🏪 Venta Rápida en Tienda (Mostrador)
+                  </div>
+                )}
                 {/* Top Bar: Row #, Customer Name, Note Code badge & Actions */}
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0 flex-1">
                     <span className="w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-mono text-xs font-black flex items-center justify-center shrink-0">
-                      {index + 1}
+                      {displayIdx + 1}
                     </span>
 
                     {row.sales_note_id ? (

@@ -268,6 +268,7 @@ export default function NewSalesNoteModal({
   const [customers, setCustomers] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [isRestockMode, setIsRestockMode] = useState(false);
+  const [dispatchChannel, setDispatchChannel] = useState('ALMACEN'); // 'ALMACEN' | 'TIENDA_A_ALMACEN' | 'VENTA_RAPIDA_TIENDA'
   const [restockShift, setRestockShift] = useState('MAÑANA');
   const [allowPendingArrival, setAllowPendingArrival] = useState(false);
   const [liveStockOverrides, setLiveStockOverrides] = useState({});
@@ -963,8 +964,19 @@ export default function NewSalesNoteModal({
     setIsSubmitting(true);
     try {
       // Submit note
+      const isQuickStoreSale = !isRestockMode && dispatchChannel === 'VENTA_RAPIDA_TIENDA';
+      const isStoreToWarehouse = !isRestockMode && dispatchChannel === 'TIENDA_A_ALMACEN';
+      const resolvedDeliveryType = isRestockMode
+        ? 'Reposición a Tienda'
+        : isQuickStoreSale
+          ? 'Venta Rápida en Tienda (Mostrador)'
+          : isStoreToWarehouse
+            ? 'Enviado desde Tienda (Cargar en Almacén)'
+            : (deliveryType || 'A su tienda');
+
       const payload = {
         note_type: isRestockMode ? 'REPOSICION_TIENDA' : 'VENTA',
+        delivery_status: isQuickStoreSale ? 'ENTREGADO' : 'PENDIENTE',
         allow_pending_arrival: !isRestockMode && allowPendingArrival,
         shift: restockShift,
         customer_id: isRestockMode ? null : finalCustId,
@@ -974,8 +986,14 @@ export default function NewSalesNoteModal({
         date,
         due_date: dueDate,
         seller_name: sellerName,
-        delivery_type: isRestockMode ? 'Reposición a Tienda' : (deliveryType || 'A su tienda'),
-        delivery_destination: isRestockMode ? (destination || 'TIENDA CENTRAL') : (destination || custAddress),
+        delivery_type: resolvedDeliveryType,
+        delivery_destination: isRestockMode
+          ? (destination || 'TIENDA CENTRAL')
+          : isQuickStoreSale
+            ? (destination || 'MOSTRADOR TIENDA')
+            : isStoreToWarehouse
+              ? `[TIENDA → ALMACÉN] ${destination || custAddress || 'Cargar en Almacén'}`
+              : (destination || custAddress),
         delivery_location_url: isRestockMode ? '' : (deliveryLocationUrl || selectedCustomer.store_location_url || ''),
         notes,
         items: validItems.map(it => ({
@@ -1170,35 +1188,70 @@ export default function NewSalesNoteModal({
 
             {!isCreatingCustomer ? (
               <div>
-                {/* Quick Shortcut for Internal Store Restock Order */}
-                <div className="mb-3.5 p-3 sm:p-3.5 rounded-2xl bg-indigo-50/80 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
-                      <Store size={17} />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-xs sm:text-sm font-black text-indigo-950 dark:text-indigo-200">
-                        ¿Pedido interno de Almacén para llenar la Tienda?
+                {/* Quick Shortcuts: 1) Venta Rápida de Mostrador en Tienda & 2) Reposición Interna a Tienda */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-3.5">
+                  {/* Shortcut A: Venta Rápida en Tienda (Alicate / Mostrador) */}
+                  <div className="p-3 rounded-2xl bg-amber-50/90 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-500/40 flex items-center justify-between gap-2.5">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-9 h-9 rounded-xl bg-[#FF8C00] text-white flex items-center justify-center shrink-0">
+                        <Store size={17} />
                       </div>
-                      <div className="text-[11px] text-indigo-700/80 dark:text-indigo-300/80">
-                        Sin cobros ni deudas. Editable en curso y se confirma al llegar a tienda.
+                      <div className="min-w-0">
+                        <div className="text-xs sm:text-sm font-black text-amber-950 dark:text-amber-200">
+                          ⚡ Venta Rápida en Tienda
+                        </div>
+                        <div className="text-[11px] text-amber-800/85 dark:text-amber-300/80">
+                          Cliente compra en mostrador y se lo lleva ahora (No va a cola de Almacén).
+                        </div>
                       </div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsRestockMode(false);
+                        setDispatchChannel('VENTA_RAPIDA_TIENDA');
+                        setSelectedCustomer({ id: null, name: 'CLIENTE MOSTRADOR TIENDA', phone: '', address: 'MOSTRADOR TIENDA', code: 'TIENDA' });
+                        setSellerName('MOSTRADOR TIENDA');
+                        setDeliveryType('Venta Rápida en Tienda (Mostrador)');
+                        setDestination('MOSTRADOR TIENDA');
+                        setItems(prev => prev.map(it => ({ ...it, sale_mode: 'UNIDAD', warehouse_source: 'TIENDA' })));
+                        setErrorMessage('');
+                      }}
+                      className="py-2 px-3 rounded-xl bg-[#FF8C00] hover:bg-[#e67e00] text-white text-xs font-extrabold inline-flex items-center justify-center gap-1.5 shrink-0 cursor-pointer shadow-xs"
+                    >
+                      <span>Venta Tienda</span>
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsRestockMode(true);
-                      setSelectedCustomer({ id: null, name: 'REPOSICIÓN TIENDA CENTRAL', phone: '', address: 'TIENDA CENTRAL', code: 'INTERNO' });
-                      setDeliveryType('Reposición a Tienda');
-                      setDestination('TIENDA CENTRAL');
-                      setErrorMessage('');
-                    }}
-                    className="py-2 px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-extrabold inline-flex items-center justify-center gap-1.5 shrink-0 cursor-pointer shadow-xs"
-                  >
-                    <Store size={14} />
-                    <span>Crear Reposición Tienda</span>
-                  </button>
+
+                  {/* Shortcut B: Pedido Interno de Reposición a Tienda */}
+                  <div className="p-3 rounded-2xl bg-indigo-50/80 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-500/40 flex items-center justify-between gap-2.5">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
+                        <Store size={17} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs sm:text-sm font-black text-indigo-950 dark:text-indigo-200">
+                          📦 Reposición Almacén → Tienda
+                        </div>
+                        <div className="text-[11px] text-indigo-700/80 dark:text-indigo-300/80">
+                          Pedir mercadería a Almacén para llenar Tienda (Sin cobro).
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsRestockMode(true);
+                        setSelectedCustomer({ id: null, name: 'REPOSICIÓN TIENDA CENTRAL', phone: '', address: 'TIENDA CENTRAL', code: 'INTERNO' });
+                        setDeliveryType('Reposición a Tienda');
+                        setDestination('TIENDA CENTRAL');
+                        setErrorMessage('');
+                      }}
+                      className="py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-extrabold inline-flex items-center justify-center gap-1.5 shrink-0 cursor-pointer shadow-xs"
+                    >
+                      <span>Reposición</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Search & Action Banner */}
@@ -1524,6 +1577,66 @@ export default function NewSalesNoteModal({
                   </button>
                 )}
               </div>
+
+              {/* Selector de Canal de Despacho (Almacén vs Enviado desde Tienda vs Venta Rápida en Tienda) */}
+              {!isRestockMode && (
+                <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 rounded-2xl p-3">
+                  <div className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
+                    ¿Dónde se entrega o quién despacha este pedido?
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDispatchChannel('ALMACEN');
+                        setDeliveryType('A su tienda');
+                      }}
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                        dispatchChannel === 'ALMACEN'
+                          ? 'bg-cyan-50 dark:bg-cyan-500/20 border-cyan-500 text-cyan-900 dark:text-cyan-200 font-extrabold shadow-xs'
+                          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                      }`}
+                    >
+                      <div className="text-xs font-black">📦 1. Despacho por Almacén</div>
+                      <div className="text-[10px] opacity-80 mt-0.5">Pedido que Almacén alista y lleva a entregar.</div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDispatchChannel('TIENDA_A_ALMACEN');
+                        setDeliveryType('Enviado desde Tienda (Cargar en Almacén)');
+                      }}
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                        dispatchChannel === 'TIENDA_A_ALMACEN'
+                          ? 'bg-amber-50 dark:bg-amber-500/20 border-[#FF8C00] text-amber-950 dark:text-amber-200 font-extrabold shadow-xs'
+                          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                      }`}
+                    >
+                      <div className="text-xs font-black">📲 2. Tienda manda a Almacén</div>
+                      <div className="text-[10px] opacity-80 mt-0.5">Vendido en Tienda para que Almacén lo cargue.</div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDispatchChannel('VENTA_RAPIDA_TIENDA');
+                        setDeliveryType('Venta Rápida en Tienda (Mostrador)');
+                        setDestination('MOSTRADOR TIENDA');
+                        setItems(prev => prev.map(it => ({ ...it, warehouse_source: 'TIENDA' })));
+                      }}
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                        dispatchChannel === 'VENTA_RAPIDA_TIENDA'
+                          ? 'bg-emerald-50 dark:bg-emerald-500/20 border-emerald-500 text-emerald-950 dark:text-emerald-200 font-extrabold shadow-xs'
+                          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                      }`}
+                    >
+                      <div className="text-xs font-black">🏪 3. Venta Rápida en Tienda</div>
+                      <div className="text-[10px] opacity-80 mt-0.5">Cliente se lo lleva ahora en mostrador (Va a Orden de Tienda).</div>
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* General Note Logistics & Dates Bar */}
               <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80 rounded-2xl p-3 sm:p-4">

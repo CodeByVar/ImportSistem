@@ -3006,7 +3006,7 @@ app.post('/api/sales-notes', (req, res) => {
       noteCode,
       req.body.shift === 'TARDE' ? 0 : 1,
       req.body.shift === 'TARDE' ? 1 : 0,
-      'EN PREPARACIÓN',
+      isImmediateDelivery ? 'ENTREGADO' : 'EN PREPARACIÓN',
       isRestock ? (delivery_destination || 'TIENDA CENTRAL') : (delivery_destination || customer_address || ''),
       notes || '',
       ''
@@ -3883,6 +3883,7 @@ app.get('/api/daily-orders', (req, res) => {
         ddo.*,
         sn.status AS note_status,
         sn.note_type AS note_type,
+        sn.delivery_type AS note_delivery_type,
         sn.delivery_status AS note_delivery_status,
         sn.total_boxes AS note_total_boxes,
         sn.total_units AS note_total_units,

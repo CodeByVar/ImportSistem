@@ -932,6 +932,7 @@ export async function handleDemoApiRequest(urlStr, init = {}) {
       });
     }
 
+    const isImmediateStoreSale = !isRestock && body.delivery_status === 'ENTREGADO';
     state.salesNotes.unshift(newNote);
     state.dailyOrders.unshift({
       id: Date.now() + 99,
@@ -939,9 +940,11 @@ export async function handleDemoApiRequest(urlStr, init = {}) {
       shift: body.shift || 'MAÑANA',
       order_number: state.dailyOrders.length + 1,
       client_name: newNote.customer_name,
+      activity_or_customer: newNote.customer_name,
       sales_note_id: newNote.id,
       sales_note_code: newNote.note_code,
       note_type: newNote.note_type,
+      note_delivery_type: newNote.delivery_type,
       note_status: newNote.status,
       note_total: newNote.total_amount,
       note_paid: newNote.paid_amount,
@@ -949,9 +952,10 @@ export async function handleDemoApiRequest(urlStr, init = {}) {
       note_total_boxes: newNote.total_boxes,
       note_total_units: newNote.total_units,
       delivery_place: newNote.delivery_destination,
+      observations: newNote.delivery_destination,
       seller_name: newNote.seller_name,
-      is_delivered: 0,
-      status: newNote.status
+      is_delivered: isImmediateStoreSale ? 1 : 0,
+      status: isImmediateStoreSale ? 'ENTREGADO' : 'EN PREPARACIÓN'
     });
     saveDemoState(state);
     return jsonResponse({ success: true, data: newNote });
