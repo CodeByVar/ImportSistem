@@ -3009,6 +3009,25 @@ app.post('/api/sales-notes', (req, res) => {
       ''
     );
 
+    logSecurityEvent(db, {
+      action: isRestock ? 'RESTOCK_CREATED' : 'NOTE_CREATED',
+      actorUser: req.user,
+      target: noteCode,
+      ip: getClientIp(req),
+      details: {
+        actor_name: (seller_name || req.user?.name || req.user?.username || 'USUARIO').toUpperCase(),
+        customer: effectiveCustomerName.trim().toUpperCase(),
+        destination: isRestock ? (delivery_destination || 'TIENDA CENTRAL') : (delivery_destination || customer_address || ''),
+        total_boxes: totalBoxes,
+        total_units: totalUnits,
+        total_amount: totalAmount,
+        paid_amount: initialPaid,
+        balance_amount: balance,
+        items_count: items.length,
+        note_type: noteType
+      }
+    });
+
     return { noteId, noteCode, totalAmount, balance, status, noteType };
   });
 
@@ -3069,6 +3088,23 @@ app.post('/api/sales-notes/:id/payments', (req, res) => {
       db.prepare("UPDATE daily_dispatch_orders SET status = 'ENTREGADO', updated_at = CURRENT_TIMESTAMP WHERE sales_note_id = ?").run(req.params.id);
     }
 
+    logSecurityEvent(db, {
+      action: 'PAYMENT_ADDED',
+      actorUser: req.user,
+      target: note.note_code,
+      ip: getClientIp(req),
+      details: {
+        actor_name: (registered_by || req.user?.name || req.user?.username || 'CAJA').toUpperCase(),
+        customer: note.customer_name,
+        amount: payAmt,
+        payment_method: payment_method || 'Efectivo',
+        account_info: account_info || '',
+        before_balance: note.balance_amount,
+        after_balance: newBalance,
+        new_status: newStatus
+      }
+    });
+
     return { newPaid: paymentsTotal, newBalance, newStatus, noteCode: note.note_code };
   });
 
@@ -3102,6 +3138,21 @@ app.delete('/api/sales-notes/:id/payments/:paymentId', (req, res) => {
         SET paid_amount = ?, balance_amount = ?, status = ?, updated_at = CURRENT_TIMESTAMP 
         WHERE id = ?
       `).run(paymentsTotal, balance, status, noteId);
+
+      logSecurityEvent(db, {
+        action: 'PAYMENT_DELETED',
+        actorUser: req.user,
+        target: note.note_code,
+        ip: getClientIp(req),
+        details: {
+          actor_name: (req.user?.name || req.user?.username || 'ADMIN').toUpperCase(),
+          customer: note.customer_name,
+          deleted_amount: payment.amount,
+          payment_method: payment.payment_method,
+          before_balance: note.balance_amount,
+          after_balance: balance
+        }
+      });
 
       return {
         noteId,
@@ -3437,6 +3488,59 @@ app.put('/api/sales-notes/:id', (req, res) => {
       db.prepare("UPDATE daily_dispatch_orders SET status = 'ENTREGADO', updated_at = CURRENT_TIMESTAMP WHERE sales_note_id = ? AND status != 'ENTREGADO'").run(noteId);
     }
 
+    // 5. Registrar en Bitácora de Auditoría exactamente qué se modificó (Antes vs Después)
+    const changes = [];
+    if ((existingNote.customer_name || '') !== customer_name.trim().toUpperCase()) {
+      changes.push(`Cliente: "${existingNote.customer_name}" → "${customer_name.trim().toUpperCase()}"`);
+    }
+    if (Number(existingNote.total_boxes || 0) !== Number(totalBoxes)) {
+      changes.push(`Cajas: ${existingNote.total_boxes || 0} cj → ${totalBoxes} cj`);
+    }
+    if (Number(existingNote.total_units || 0) !== Number(totalUnits)) {
+      changes.push(`Unidades: ${existingNote.total_units || 0} u. → ${totalUnits} u.`);
+    }
+    if (!isRestock && Number(existingNote.total_amount || 0) !== Number(finalTotalAmount)) {
+      changes.push(`Total: Bs ${Number(existingNote.total_amount || 0).toFixed(2)} → Bs ${Number(finalTotalAmount).toFixed(2)}`);
+    }
+    if (!isRestock && Number(existingNote.paid_amount || 0) !== Number(paymentsTotal)) {
+      changes.push(`A cuenta: Bs ${Number(existingNote.paid_amount || 0).toFixed(2)} → Bs ${Number(paymentsTotal).toFixed(2)}`);
+    }
+    if ((existingNote.delivery_destination || '') !== (delivery_destination || existingNote.delivery_destination || '')) {
+      changes.push(`Destino: "${existingNote.delivery_destination || '-'}" → "${delivery_destination || '-'}"`);
+    }
+    if (changes.length === 0) {
+      changes.push(`Actualización de productos/observaciones (${items.length} ítems)`);
+    }
+
+    logSecurityEvent(db, {
+      action: 'NOTE_UPDATED',
+      actorUser: req.user,
+      target: existingNote.note_code,
+      ip: getClientIp(req),
+      details: {
+        actor_name: (req.user?.name || seller_name || existingNote.seller_name || 'USUARIO').toUpperCase(),
+        customer: customer_name.trim().toUpperCase(),
+        note_type: existingNote.note_type || 'VENTA',
+        changes,
+        before: {
+          customer_name: existingNote.customer_name,
+          total_boxes: existingNote.total_boxes,
+          total_units: existingNote.total_units,
+          total_amount: existingNote.total_amount,
+          paid_amount: existingNote.paid_amount,
+          balance_amount: existingNote.balance_amount
+        },
+        after: {
+          customer_name: customer_name.trim().toUpperCase(),
+          total_boxes: totalBoxes,
+          total_units: totalUnits,
+          total_amount: finalTotalAmount,
+          paid_amount: paymentsTotal,
+          balance_amount: balance
+        }
+      }
+    });
+
     return { noteId, noteCode: existingNote.note_code, totalAmount, paidAmount: paymentsTotal, balance, status };
   });
 
@@ -3621,6 +3725,24 @@ app.post('/api/sales-notes/:id/deliver', (req, res) => {
         }
       }
     }
+
+    logSecurityEvent(db, {
+      action: 'NOTE_DELIVERED',
+      actorUser: req.user,
+      target: note.note_code,
+      ip: getClientIp(req),
+      details: {
+        actor_name: (registered_by || req.user?.name || req.user?.username || 'ALMACÉN').toUpperCase(),
+        customer: note.customer_name,
+        total_boxes: note.total_boxes,
+        total_units: note.total_units,
+        total_amount: note.total_amount,
+        paid_amount: newPaid,
+        balance_amount: newBalance,
+        payment_type: payment_type || 'ENTREGA',
+        status: newStatus
+      }
+    });
 
     return {
       noteCode: note.note_code,
@@ -4732,13 +4854,63 @@ app.post('/api/system/backup', requireRoles('SUPER_ADMIN', 'ADMIN'), async (req,
 
 app.get('/api/system/audit-logs', requireRoles('SUPER_ADMIN', 'ADMIN'), (req, res) => {
   try {
-    const limit = Math.min(200, Math.max(10, parseInt(req.query.limit || '100', 10)));
+    const limit = Math.min(300, Math.max(10, parseInt(req.query.limit || '150', 10)));
     const logs = db.prepare(`
       SELECT * FROM security_audit_logs
       ORDER BY id DESC
       LIMIT ?
     `).all(limit);
     res.json({ success: true, data: logs });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint de Historial de Actividad, Validaciones y Modificaciones por Usuario (Para Reportes)
+app.get('/api/audit-logs', (req, res) => {
+  try {
+    const limit = Math.min(400, Math.max(20, parseInt(req.query.limit || '200', 10)));
+    const rawLogs = db.prepare(`
+      SELECT l.*, u.name AS user_full_name
+      FROM security_audit_logs l
+      LEFT JOIN users u ON u.id = l.actor_user_id
+      ORDER BY l.id DESC
+      LIMIT ?
+    `).all(limit);
+
+    const parsedLogs = rawLogs.map(row => {
+      let detailsObj = {};
+      if (row.details) {
+        try {
+          detailsObj = typeof row.details === 'string' ? JSON.parse(row.details) : row.details;
+        } catch {
+          detailsObj = { raw: row.details };
+        }
+      }
+      const actorName = (
+        detailsObj.actor_name ||
+        detailsObj.confirmedBy ||
+        row.user_full_name ||
+        row.actor_username ||
+        'SISTEMA'
+      ).toUpperCase();
+
+      return {
+        id: row.id,
+        action: row.action,
+        actor_name: actorName,
+        actor_username: row.actor_username || actorName.toLowerCase(),
+        actor_role: row.actor_role || 'OPERADOR',
+        target: row.target || '-',
+        created_at: row.created_at,
+        details: detailsObj
+      };
+    });
+
+    res.json({
+      success: true,
+      data: parsedLogs
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

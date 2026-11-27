@@ -498,6 +498,83 @@ function getInitialDemoState() {
         payment_method: 'EFECTIVO',
         registered_by: 'ABEL'
       }
+    ],
+    auditLogs: [
+      {
+        id: 501,
+        action: 'NOTE_CREATED',
+        actor_name: 'ABEL',
+        actor_username: 'abel',
+        actor_role: 'SUPER_ADMIN',
+        target: 'IR101A',
+        created_at: `${today} 08:45:10`,
+        details: {
+          actor_name: 'ABEL',
+          customer: 'FERRETERÍA INDUSTRIAL LA PAZ - SRA. MARTHA',
+          destination: 'Trans Copacabana - La Paz',
+          total_boxes: 3,
+          total_units: 140,
+          total_amount: 9140,
+          paid_amount: 5740,
+          balance_amount: 3400,
+          items_count: 2
+        }
+      },
+      {
+        id: 502,
+        action: 'RESTOCK_CREATED',
+        actor_name: 'DANIEL',
+        actor_username: 'daniel',
+        actor_role: 'VENTAS',
+        target: 'REP-001',
+        created_at: `${today} 09:10:22`,
+        details: {
+          actor_name: 'DANIEL',
+          customer: 'REPOSICIÓN TIENDA CENTRAL',
+          destination: 'TIENDA CENTRAL',
+          total_boxes: 2,
+          total_units: 90,
+          note_type: 'REPOSICION_TIENDA'
+        }
+      },
+      {
+        id: 503,
+        action: 'NOTE_UPDATED',
+        actor_name: 'DANIEL',
+        actor_username: 'daniel',
+        actor_role: 'VENTAS',
+        target: 'IR101A',
+        created_at: `${today} 09:35:04`,
+        details: {
+          actor_name: 'DANIEL',
+          customer: 'FERRETERÍA INDUSTRIAL LA PAZ - SRA. MARTHA',
+          changes: [
+            'Cajas: 2 cj → 3 cj',
+            'Total: Bs 6490.00 → Bs 9140.00'
+          ],
+          before: { total_boxes: 2, total_amount: 6490 },
+          after: { total_boxes: 3, total_amount: 9140 }
+        }
+      },
+      {
+        id: 504,
+        action: 'PAYMENT_ADDED',
+        actor_name: 'ABEL',
+        actor_username: 'abel',
+        actor_role: 'SUPER_ADMIN',
+        target: 'IR101A',
+        created_at: `${today} 10:02:18`,
+        details: {
+          actor_name: 'ABEL',
+          customer: 'FERRETERÍA INDUSTRIAL LA PAZ - SRA. MARTHA',
+          amount: 5740,
+          payment_method: 'POR TRANSFERENCIA QR CUENTA JAIME',
+          account_info: 'CUENTA JAIME',
+          before_balance: 9140,
+          after_balance: 3400,
+          new_status: 'PENDIENTE'
+        }
+      }
     ]
   };
 }
@@ -1138,6 +1215,14 @@ export async function handleDemoApiRequest(urlStr, init = {}) {
     state.expenses = state.expenses.filter(e => Number(e.id) !== id);
     saveDemoState(state);
     return jsonResponse({ success: true });
+  }
+
+  // 11. Audit Logs & Activity History
+  if (path === '/api/audit-logs' || path === '/api/system/audit-logs') {
+    return jsonResponse({
+      success: true,
+      data: state.auditLogs || getInitialDemoState().auditLogs
+    });
   }
 
   // Fallback genérico para cualquier otro endpoint /api/*

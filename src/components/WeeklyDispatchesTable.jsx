@@ -13,7 +13,13 @@ import {
   TrendingUp,
   Download,
   Award,
-  Wallet
+  ShieldCheck,
+  Edit3,
+  CheckCircle2,
+  Trash2,
+  DollarSign,
+  Clock,
+  UserCheck
 } from 'lucide-react';
 import { formatNumber } from '../utils/formatters';
 
@@ -54,13 +60,169 @@ function getWeekInfo(offsetWeeks = 0) {
   };
 }
 
+// Helper para traducir acciones de auditoría a lenguaje claro en español
+function describeAuditEvent(log) {
+  const d = log.details || {};
+  const fmtBs = (v) => Number(v || 0).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  switch (log.action) {
+    case 'NOTE_CREATED':
+      return {
+        category: 'NOTES',
+        badgeLabel: 'NUEVA NOTA',
+        badgeColor: '#38bdf8',
+        badgeBg: 'rgba(56, 189, 248, 0.14)',
+        title: `Emitió Nota de Venta ${log.target}`,
+        subtitle: `Cliente: ${d.customer || 'General'} • ${d.total_boxes || 0} cj (${d.total_units || 0} u.) • Total: Bs ${fmtBs(d.total_amount)}`,
+        changes: d.paid_amount > 0 ? [`Abono inicial: Bs ${fmtBs(d.paid_amount)} | Saldo: Bs ${fmtBs(d.balance_amount)}`] : ['Sin abono inicial (Pendiente de cobro)']
+      };
+    case 'RESTOCK_CREATED':
+      return {
+        category: 'NOTES',
+        badgeLabel: 'PEDIDO REPOSICIÓN',
+        badgeColor: '#a5b4fc',
+        badgeBg: 'rgba(165, 180, 252, 0.16)',
+        title: `Creó Pedido de Reposición a Tienda ${log.target}`,
+        subtitle: `Destino: ${d.destination || 'TIENDA CENTRAL'} • ${d.total_boxes || 0} cajas (${d.total_units || 0} unidades)`,
+        changes: ['En curso (editable hasta confirmar recepción en tienda)']
+      };
+    case 'NOTE_UPDATED':
+      return {
+        category: 'MODIFICATIONS',
+        badgeLabel: 'MODIFICACIÓN DE NOTA',
+        badgeColor: '#FFC107',
+        badgeBg: 'rgba(255, 193, 7, 0.16)',
+        title: `Modificó la Nota ${log.target}`,
+        subtitle: `Cliente: ${d.customer || d.after?.customer_name || 'General'}`,
+        changes: Array.isArray(d.changes) && d.changes.length > 0
+          ? d.changes
+          : ['Se actualizaron productos, cantidades o precios de la nota']
+      };
+    case 'NOTE_DELIVERED':
+      return {
+        category: 'CONFIRMATIONS',
+        badgeLabel: 'ENTREGA CONFIRMADA',
+        badgeColor: '#10b981',
+        badgeBg: 'rgba(16, 185, 129, 0.16)',
+        title: `Confirmó Entrega Física de Nota ${log.target}`,
+        subtitle: `Cliente: ${d.customer || 'General'} • Stock descontado del inventario`,
+        changes: [`Pagado acumulado: Bs ${fmtBs(d.paid_amount)} | Saldo: Bs ${fmtBs(d.balance_amount)} (${d.status || 'ENTREGADO'})`]
+      };
+    case 'RESTOCK_CONFIRMED':
+      return {
+        category: 'CONFIRMATIONS',
+        badgeLabel: 'REPOSICIÓN RECIBIDA',
+        badgeColor: '#10b981',
+        badgeBg: 'rgba(16, 185, 129, 0.16)',
+        title: `Confirmó Llegada a Tienda de ${log.target}`,
+        subtitle: `Recibido por: ${d.confirmedBy || log.actor_name} • ${d.total_boxes || 0} cajas (${d.total_units || 0} u.)`,
+        changes: ['Traspaso interno Almacén → Tienda completado (sin cobro ni deuda)']
+      };
+    case 'PAYMENT_ADDED':
+      return {
+        category: 'PAYMENTS',
+        badgeLabel: 'COBRO / ABONO',
+        badgeColor: '#34d399',
+        badgeBg: 'rgba(52, 211, 153, 0.15)',
+        title: `Registró Cobro/Abono en Nota ${log.target}`,
+        subtitle: `Cliente: ${d.customer || 'General'} • Monto: Bs ${fmtBs(d.amount)} (${d.payment_method || 'Efectivo'})`,
+        changes: [`Saldo anterior: Bs ${fmtBs(d.before_balance)} → Nuevo saldo: Bs ${fmtBs(d.after_balance)}`]
+      };
+    case 'PAYMENT_DELETED':
+      return {
+        category: 'MODIFICATIONS',
+        badgeLabel: 'ABONO ELIMINADO',
+        badgeColor: '#fb7185',
+        badgeBg: 'rgba(244, 63, 94, 0.16)',
+        title: `Eliminó un Abono de la Nota ${log.target}`,
+        subtitle: `Cliente: ${d.customer || 'General'} • Abono anulado: Bs ${fmtBs(d.deleted_amount)}`,
+        changes: [`Nuevo saldo pendiente: Bs ${fmtBs(d.after_balance)}`]
+      };
+    case 'NOTE_CANCELLED':
+      return {
+        category: 'CANCELLATIONS',
+        badgeLabel: 'NOTA ANULADA',
+        badgeColor: '#f43f5e',
+        badgeBg: 'rgba(244, 63, 94, 0.18)',
+        title: `Anuló la Nota ${log.target}`,
+        subtitle: `Cliente: ${d.customer || 'General'} • Total anulado: Bs ${fmtBs(d.total)}`,
+        changes: ['Nota marcada como ANULADA y stock devuelto al inventario']
+      };
+    case 'QUICK_STOCK_IN':
+      return {
+        category: 'INVENTORY',
+        badgeLabel: 'INGRESO RÁPIDO STOCK',
+        badgeColor: '#38bdf8',
+        badgeBg: 'rgba(56, 189, 248, 0.15)',
+        title: `Ingreso Rápido de Mercadería (${log.target})`,
+        subtitle: `Agregó +${d.addedUnits || 0} unidades (${d.boxes || 0} cajas)`,
+        changes: [`Stock anterior: ${d.previousStock ?? 0} u. → Nuevo stock: ${d.newStock ?? 0} u.`]
+      };
+    case 'PRODUCT_UPDATED':
+      return {
+        category: 'INVENTORY',
+        badgeLabel: 'EDICIÓN PRODUCTO / PRECIO',
+        badgeColor: '#FFC107',
+        badgeBg: 'rgba(255, 193, 7, 0.16)',
+        title: `Editó Datos/Precios de Producto (${log.target})`,
+        subtitle: `${d.name || log.target}`,
+        changes: [`Mayor: Bs ${fmtBs(d.wholesale_price)} | Caja: Bs ${fmtBs(d.box_price)} | Stock: ${d.current_stock ?? '-'} u.`]
+      };
+    case 'STOCK_OVERRIDE_PENDING_ARRIVAL':
+      return {
+        category: 'CONFIRMATIONS',
+        badgeLabel: 'MERCADERÍA RECIÉN LLEGADA',
+        badgeColor: '#f59e0b',
+        badgeBg: 'rgba(245, 158, 11, 0.16)',
+        title: `Autorizó Venta con Mercadería Recién Llegada (${log.target})`,
+        subtitle: `Cliente: ${d.customer || 'General'} • Pendiente de carga formal en inventario`,
+        changes: ['Validado con casilla de mercadería recién llegada']
+      };
+    case 'EXPENSE_CREATED':
+      return {
+        category: 'PAYMENTS',
+        badgeLabel: 'GASTO CAJA CHICA',
+        badgeColor: '#fb7185',
+        badgeBg: 'rgba(244, 63, 94, 0.14)',
+        title: `Registró Gasto del Día (Bs ${fmtBs(d.amount)})`,
+        subtitle: `Categoría: ${d.category || 'Varios'} • Fecha: ${d.date || ''}`,
+        changes: []
+      };
+    case 'LOGIN_SUCCESS':
+      return {
+        category: 'SECURITY',
+        badgeLabel: 'INICIO DE SESIÓN',
+        badgeColor: '#94a3b8',
+        badgeBg: 'rgba(148, 163, 184, 0.14)',
+        title: `Inició sesión en el sistema`,
+        subtitle: `Usuario: ${log.actor_name}`,
+        changes: []
+      };
+    default:
+      return {
+        category: 'OTHER',
+        badgeLabel: log.action,
+        badgeColor: '#94a3b8',
+        badgeBg: 'rgba(148, 163, 184, 0.14)',
+        title: `${log.action} (${log.target || '-'})`,
+        subtitle: JSON.stringify(d),
+        changes: []
+      };
+  }
+}
+
 export default function WeeklyDispatchesTable({ userRole = 'SUPER_ADMIN' }) {
   const [weekOffset, setWeekOffset] = useState(0);
   const { weekCode, label: weekLabel, mondayIso, sundayIso } = getWeekInfo(weekOffset);
 
-  const [reportTab, setReportTab] = useState('PRODUCTS'); // 'PRODUCTS' | 'SELLERS' | 'DAILY'
+  const [reportTab, setReportTab] = useState('PRODUCTS'); // 'PRODUCTS' | 'SELLERS' | 'DAILY' | 'AUDIT'
   const [productsData, setProductsData] = useState([]);
   const [weekNotes, setWeekNotes] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [auditCategoryFilter, setAuditCategoryFilter] = useState('ALL'); // 'ALL' | 'MODIFICATIONS' | 'CONFIRMATIONS' | 'NOTES' | 'PAYMENTS' | 'INVENTORY'
+  const [auditUserFilter, setAuditUserFilter] = useState('ALL');
+  const [auditSearch, setAuditSearch] = useState('');
+
   const [kpiSummary, setKpiSummary] = useState({
     totalProductsSold: 0,
     totalUnitsSold: 0,
@@ -97,9 +259,10 @@ export default function WeeklyDispatchesTable({ userRole = 'SUPER_ADMIN' }) {
       const offset = (currentPage - 1) * itemsPerPage;
       const dispatchesUrl = `/api/weekly-dispatches?weekCode=${weekCode}&mondayDate=${mondayIso}&onlyDispatched=${onlyDispatched}&brand=${encodeURIComponent(selectedBrand)}&search=${encodeURIComponent(searchTerm)}&limit=${itemsPerPage}&offset=${offset}`;
 
-      const [dispRes, notesRes] = await Promise.all([
+      const [dispRes, notesRes, auditRes] = await Promise.all([
         fetch(dispatchesUrl).then(r => r.json()),
-        fetch('/api/sales-notes?limit=300').then(r => r.json()).catch(() => ({ success: false, data: [] }))
+        fetch('/api/sales-notes?limit=300').then(r => r.json()).catch(() => ({ success: false, data: [] })),
+        fetch('/api/audit-logs?limit=250').then(r => r.json()).catch(() => ({ success: false, data: [] }))
       ]);
 
       if (dispRes.success) {
@@ -117,6 +280,10 @@ export default function WeeklyDispatchesTable({ userRole = 'SUPER_ADMIN' }) {
           return d >= mondayIso && d <= sundayIso;
         });
         setWeekNotes(filteredWeekNotes);
+      }
+
+      if (auditRes.success && Array.isArray(auditRes.data)) {
+        setAuditLogs(auditRes.data);
       }
 
       if (brands.length <= 1) {
@@ -217,6 +384,37 @@ export default function WeeklyDispatchesTable({ userRole = 'SUPER_ADMIN' }) {
     };
   }, [weekNotes, kpiSummary.totalRevenueSold]);
 
+  // Procesar y enriquecer los logs de auditoría y actividad de usuarios
+  const enrichedAuditLogs = useMemo(() => {
+    return auditLogs
+      .filter(l => l.action !== 'LOGIN_FAILED')
+      .map(l => ({
+        ...l,
+        meta: describeAuditEvent(l)
+      }));
+  }, [auditLogs]);
+
+  const auditUsersList = useMemo(() => {
+    const set = new Set();
+    enrichedAuditLogs.forEach(l => {
+      if (l.actor_name) set.add(l.actor_name);
+    });
+    return ['ALL', ...Array.from(set)];
+  }, [enrichedAuditLogs]);
+
+  const filteredAuditLogs = useMemo(() => {
+    const q = auditSearch.trim().toLowerCase();
+    return enrichedAuditLogs.filter(l => {
+      if (auditCategoryFilter !== 'ALL' && l.meta.category !== auditCategoryFilter) return false;
+      if (auditUserFilter !== 'ALL' && l.actor_name !== auditUserFilter) return false;
+      if (q) {
+        const hay = `${l.actor_name} ${l.target} ${l.meta.title} ${l.meta.subtitle} ${(l.meta.changes || []).join(' ')}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [enrichedAuditLogs, auditCategoryFilter, auditUserFilter, auditSearch]);
+
   const dayCols = useMemo(() => {
     const baseMonday = new Date(`${mondayIso}T12:00:00`);
     const names = [
@@ -276,8 +474,6 @@ export default function WeeklyDispatchesTable({ userRole = 'SUPER_ADMIN' }) {
     document.body.removeChild(link);
   };
 
-  const totalPages = Math.max(1, Math.ceil(totalCount / itemsPerPage));
-
   return (
     <div className="glass-panel" style={{ padding: '24px', marginBottom: '28px' }}>
       {/* Top Header & Week Selector */}
@@ -325,7 +521,7 @@ export default function WeeklyDispatchesTable({ userRole = 'SUPER_ADMIN' }) {
               </span>
             </div>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
-              Consolidado automático de salidas de mercadería (Lunes a Sábado), rendimiento por vendedor y cobros
+              Salidas de mercadería (L-S), ventas por vendedor y bitácora de actividad/validaciones por usuario
             </p>
           </div>
         </div>
@@ -471,7 +667,7 @@ export default function WeeklyDispatchesTable({ userRole = 'SUPER_ADMIN' }) {
         )}
       </div>
 
-      {/* Selector de Sub-Reporte */}
+      {/* Selector de Sub-Reporte (4 Pestañas) */}
       <div style={{
         display: 'flex',
         gap: '8px',
@@ -495,7 +691,7 @@ export default function WeeklyDispatchesTable({ userRole = 'SUPER_ADMIN' }) {
           }}
         >
           <PackageCheck size={15} />
-          <span>1. Salidas de Productos (Lunes a Sábado)</span>
+          <span>1. Salidas de Productos (L-S)</span>
         </button>
 
         {!isAlmacen && (
@@ -515,7 +711,7 @@ export default function WeeklyDispatchesTable({ userRole = 'SUPER_ADMIN' }) {
               }}
             >
               <Award size={15} />
-              <span>2. Ventas por Vendedor & Top Clientes</span>
+              <span>2. Ventas por Vendedor & Clientes</span>
             </button>
 
             <button
@@ -533,10 +729,28 @@ export default function WeeklyDispatchesTable({ userRole = 'SUPER_ADMIN' }) {
               }}
             >
               <CalendarDays size={15} />
-              <span>3. Resumen Diario de Ventas (L-S)</span>
+              <span>3. Resumen Diario de Ventas</span>
             </button>
           </>
         )}
+
+        <button
+          type="button"
+          onClick={() => setReportTab('AUDIT')}
+          className="btn"
+          style={{
+            padding: '8px 16px',
+            borderRadius: '10px',
+            fontSize: '0.8rem',
+            fontWeight: 800,
+            background: reportTab === 'AUDIT' ? 'var(--cyan-primary)' : 'rgba(255,255,255,0.05)',
+            color: reportTab === 'AUDIT' ? '#ffffff' : 'var(--text-muted)',
+            border: '1px solid var(--border-glass)'
+          }}
+        >
+          <ShieldCheck size={15} />
+          <span>4. Actividad & Auditoría de Usuarios ({enrichedAuditLogs.length})</span>
+        </button>
       </div>
 
       {/* Modal Detalle de Notas de Venta del Producto */}
@@ -1023,6 +1237,181 @@ export default function WeeklyDispatchesTable({ userRole = 'SUPER_ADMIN' }) {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* =====================================================================
+          VISTA 4: HISTORIAL DE ACTIVIDAD, VALIDACIONES Y CAMBIOS POR USUARIO
+         ===================================================================== */}
+      {reportTab === 'AUDIT' && (
+        <div>
+          {/* Barra de Filtros de Auditoría por Usuario y Tipo de Acción */}
+          <div style={{
+            display: 'flex',
+            gap: '12px',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: '16px'
+          }}>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              {[
+                { id: 'ALL', label: 'Todas las Acciones' },
+                { id: 'MODIFICATIONS', label: '✏️ Modificaciones de Notas' },
+                { id: 'CONFIRMATIONS', label: '✅ Confirmaciones (Entrega/Tienda)' },
+                { id: 'NOTES', label: '📋 Nuevas Notas / Reposiciones' },
+                { id: 'PAYMENTS', label: '💵 Cobros & Caja' },
+                { id: 'INVENTORY', label: '📦 Cambios de Stock / Precios' },
+                { id: 'CANCELLATIONS', label: '❌ Anulaciones' }
+              ].map(cat => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setAuditCategoryFilter(cat.id)}
+                  className="btn"
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    background: auditCategoryFilter === cat.id ? 'var(--cyan-primary)' : 'rgba(255,255,255,0.05)',
+                    color: auditCategoryFilter === cat.id ? '#ffffff' : 'var(--text-muted)',
+                    border: '1px solid var(--border-glass)'
+                  }}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+              {/* Filtro por Usuario / Trabajador */}
+              <select
+                className="form-select"
+                value={auditUserFilter}
+                onChange={(e) => setAuditUserFilter(e.target.value)}
+                style={{ width: 'auto', minWidth: '165px', fontSize: '0.78rem', fontWeight: 700 }}
+              >
+                {auditUsersList.map(u => (
+                  <option key={u} value={u}>
+                    {u === 'ALL' ? '👤 Todos los Usuarios' : `👤 Usuario: ${u}`}
+                  </option>
+                ))}
+              </select>
+
+              {/* Buscador */}
+              <div style={{ position: 'relative', minWidth: '220px' }}>
+                <Search size={14} color="var(--text-muted)" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="Buscar nota (IR101A), cliente o usuario..."
+                  value={auditSearch}
+                  onChange={(e) => setAuditSearch(e.target.value)}
+                  style={{ paddingLeft: '32px', fontSize: '0.78rem', height: '35px' }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Tabla de Bitácora de Actividad & Validaciones */}
+          <div className="data-table-container">
+            <table className="data-table" style={{ fontSize: '0.8rem' }}>
+              <thead>
+                <tr>
+                  <th style={{ minWidth: '145px' }}>Fecha y Hora</th>
+                  <th style={{ minWidth: '140px' }}>Usuario Responsable</th>
+                  <th style={{ minWidth: '160px' }}>Tipo de Validación / Acción</th>
+                  <th style={{ minWidth: '100px' }}>Documento / SKU</th>
+                  <th style={{ minWidth: '320px' }}>Detalle de la Acción y Cambios (Antes → Después)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredAuditLogs.length === 0 ? (
+                  <tr>
+                    <td colSpan="5" style={{ textAlign: 'center', padding: '45px', color: 'var(--text-muted)' }}>
+                      No se encontraron registros de actividad con los filtros seleccionados.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredAuditLogs.map(log => {
+                    const m = log.meta;
+                    return (
+                      <tr key={log.id}>
+                        <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 700, color: 'var(--text-main)' }}>
+                            <Clock size={12} color="var(--cyan-primary)" />
+                            <span>{log.created_at}</span>
+                          </div>
+                        </td>
+
+                        <td>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 800 }}>
+                            <UserCheck size={14} color="var(--cyan-primary)" />
+                            <span>{log.actor_name}</span>
+                          </div>
+                          {log.actor_role && (
+                            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                              Rol: {log.actor_role}
+                            </div>
+                          )}
+                        </td>
+
+                        <td>
+                          <span style={{
+                            display: 'inline-block',
+                            padding: '3px 9px',
+                            borderRadius: '6px',
+                            fontSize: '0.7rem',
+                            fontWeight: 800,
+                            color: m.badgeColor,
+                            background: m.badgeBg,
+                            border: `1px solid ${m.badgeColor}44`
+                          }}>
+                            {m.badgeLabel}
+                          </span>
+                        </td>
+
+                        <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, color: 'var(--cyan-primary)' }}>
+                          {log.target}
+                        </td>
+
+                        <td>
+                          <div style={{ fontWeight: 800, color: 'var(--text-main)' }}>
+                            {m.title}
+                          </div>
+                          <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                            {m.subtitle}
+                          </div>
+                          {Array.isArray(m.changes) && m.changes.length > 0 && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '6px' }}>
+                              {m.changes.map((chg, idx) => (
+                                <span
+                                  key={idx}
+                                  style={{
+                                    fontSize: '0.72rem',
+                                    fontFamily: 'var(--font-mono)',
+                                    fontWeight: 700,
+                                    padding: '2px 8px',
+                                    borderRadius: '6px',
+                                    background: 'rgba(255, 140, 0, 0.12)',
+                                    border: '1px solid rgba(255, 140, 0, 0.3)',
+                                    color: 'var(--cyan-primary)'
+                                  }}
+                                >
+                                  {chg}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
