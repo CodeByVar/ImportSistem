@@ -439,6 +439,7 @@ export default function NewSalesNoteModal({
       } else {
         const startAsRestock = initialNoteType === 'REPOSICION_TIENDA';
         setIsRestockMode(startAsRestock);
+        setDispatchChannel('ALMACEN');
         setAllowPendingArrival(false);
         setRestockShift('MAÑANA');
         setSelectedCustomer(
@@ -934,9 +935,9 @@ export default function NewSalesNoteModal({
       return;
     }
 
-    const custName = selectedCustomer.name;
+    const custName = (selectedCustomer.name || '').trim() || (dispatchChannel === 'VENTA_RAPIDA_TIENDA' ? 'CLIENTE EN TIENDA' : 'CLIENTE GENERAL');
     const custPhone = selectedCustomer.phone || '';
-    const custAddress = selectedCustomer.address || '';
+    const custAddress = dispatchChannel === 'VENTA_RAPIDA_TIENDA' ? 'EN TIENDA' : (selectedCustomer.address || '');
     const finalCustId = selectedCustomer.id;
 
     // Validate items
@@ -985,16 +986,16 @@ export default function NewSalesNoteModal({
         customer_address: isRestockMode ? 'TIENDA CENTRAL' : custAddress,
         date,
         due_date: dueDate,
-        seller_name: sellerName,
+        seller_name: getActiveSessionUserName() || sellerName,
         delivery_type: resolvedDeliveryType,
         delivery_destination: isRestockMode
           ? (destination || 'TIENDA CENTRAL')
           : isQuickStoreSale
-            ? (destination || 'MOSTRADOR TIENDA')
+            ? 'EN TIENDA'
             : isStoreToWarehouse
               ? `[TIENDA → ALMACÉN] ${destination || custAddress || 'Cargar en Almacén'}`
               : (destination || custAddress),
-        delivery_location_url: isRestockMode ? '' : (deliveryLocationUrl || selectedCustomer.store_location_url || ''),
+        delivery_location_url: (isRestockMode || isQuickStoreSale) ? '' : (deliveryLocationUrl || selectedCustomer.store_location_url || ''),
         notes,
         items: validItems.map(it => ({
           product_id: it.product_id,
@@ -1208,12 +1209,13 @@ export default function NewSalesNoteModal({
                     <button
                       type="button"
                       onClick={() => {
+                        const activeUser = getActiveSessionUserName();
                         setIsRestockMode(false);
                         setDispatchChannel('VENTA_RAPIDA_TIENDA');
-                        setSelectedCustomer({ id: null, name: 'CLIENTE MOSTRADOR TIENDA', phone: '', address: 'MOSTRADOR TIENDA', code: 'TIENDA' });
-                        setSellerName('MOSTRADOR TIENDA');
+                        setSelectedCustomer({ id: null, name: '', phone: '', address: 'EN TIENDA', code: 'TIENDA' });
+                        setSellerName(activeUser);
                         setDeliveryType('Venta Rápida en Tienda (Mostrador)');
-                        setDestination('MOSTRADOR TIENDA');
+                        setDestination('EN TIENDA');
                         setItems(prev => prev.map(it => ({ ...it, sale_mode: 'UNIDAD', warehouse_source: 'TIENDA' })));
                         setErrorMessage('');
                       }}
@@ -1505,76 +1507,138 @@ export default function NewSalesNoteModal({
           /* Step 2: Form Body with Customer Locked In */
           <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
             <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-4">
-              {/* Locked Customer / Restock Header Card */}
-              <div className={`rounded-2xl p-3 sm:p-4 flex justify-between items-center flex-wrap gap-2.5 border ${
+              {/* Locked Customer / Restock / Quick Store Sale Header Card */}
+              <div className={`rounded-2xl p-3 sm:p-4 flex flex-col gap-3 border ${
                 isRestockMode
                   ? 'bg-gradient-to-r from-indigo-50/90 to-violet-50/90 dark:from-indigo-950/35 dark:to-violet-950/30 border-indigo-200 dark:border-indigo-500/40'
-                  : 'bg-gradient-to-r from-cyan-50/80 to-indigo-50/80 dark:from-cyan-950/30 dark:to-indigo-950/30 border-cyan-200 dark:border-cyan-500/40'
+                  : dispatchChannel === 'VENTA_RAPIDA_TIENDA'
+                    ? 'bg-gradient-to-r from-amber-50/90 to-orange-50/80 dark:from-amber-950/30 dark:to-orange-950/25 border-[#FF8C00]/50'
+                    : 'bg-gradient-to-r from-cyan-50/80 to-indigo-50/80 dark:from-cyan-950/30 dark:to-indigo-950/30 border-cyan-200 dark:border-cyan-500/40'
               }`}>
-                <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                  <div className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center text-white font-black text-xs sm:text-base shadow-md shrink-0 ${
-                    isRestockMode
-                      ? 'bg-gradient-to-br from-indigo-500 to-violet-600 shadow-indigo-500/30'
-                      : 'bg-gradient-to-br from-cyan-500 to-indigo-600 shadow-cyan-500/30'
-                  }`}>
-                    {isRestockMode ? <Store size={19} /> : (selectedCustomer.name || 'C').slice(0, 2).toUpperCase()}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-sm sm:text-lg font-black text-slate-900 dark:text-white truncate">
-                        {isRestockMode ? 'REPOSICIÓN TIENDA CENTRAL' : selectedCustomer.name}
-                      </span>
-                      <span className="badge badge-indigo text-[10px] font-mono">
-                        {isRestockMode ? 'TRASPASO INTERNO • EN CURSO' : (selectedCustomer.code || `CLI-${selectedCustomer.id}`)}
-                      </span>
+                <div className="flex justify-between items-center flex-wrap gap-2.5">
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <div className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center text-white font-black text-xs sm:text-base shadow-md shrink-0 ${
+                      isRestockMode
+                        ? 'bg-gradient-to-br from-indigo-500 to-violet-600 shadow-indigo-500/30'
+                        : dispatchChannel === 'VENTA_RAPIDA_TIENDA'
+                          ? 'bg-gradient-to-br from-[#FF8C00] to-[#FFA000] shadow-orange-500/30'
+                          : 'bg-gradient-to-br from-cyan-500 to-indigo-600 shadow-cyan-500/30'
+                    }`}>
+                      {isRestockMode || dispatchChannel === 'VENTA_RAPIDA_TIENDA'
+                        ? <Store size={19} />
+                        : (selectedCustomer.name || 'C').slice(0, 2).toUpperCase()}
                     </div>
-                    {isRestockMode ? (
-                      <div className="text-[11px] sm:text-xs text-indigo-700 dark:text-indigo-300 mt-0.5 font-medium">
-                        Puedes agregar o quitar ítems si ya no hay en almacén. Se confirma recién cuando llegue físicamente a la tienda.
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-sm sm:text-lg font-black text-slate-900 dark:text-white truncate">
+                          {isRestockMode
+                            ? 'REPOSICIÓN TIENDA CENTRAL'
+                            : dispatchChannel === 'VENTA_RAPIDA_TIENDA'
+                              ? (selectedCustomer.name?.trim() || 'VENTA RÁPIDA EN TIENDA')
+                              : selectedCustomer.name}
+                        </span>
+                        <span className="badge badge-indigo text-[10px] font-mono">
+                          {isRestockMode
+                            ? 'TRASPASO INTERNO • EN CURSO'
+                            : dispatchChannel === 'VENTA_RAPIDA_TIENDA'
+                              ? '🏪 ENTREGA EN TIENDA'
+                              : (selectedCustomer.code || `CLI-${selectedCustomer.id}`)}
+                        </span>
                       </div>
-                    ) : (
-                      <div className="flex gap-2.5 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5 flex-wrap">
-                        {selectedCustomer.phone && (
-                          <span className="flex items-center gap-1">
-                            <Phone size={12} className="text-emerald-500" /> {selectedCustomer.phone}
-                          </span>
-                        )}
-                        {selectedCustomer.address && (
-                          <span className="flex items-center gap-1 truncate max-w-[200px] sm:max-w-none">
-                            <MapPin size={12} className="text-cyan-500 shrink-0" /> <span className="truncate">{selectedCustomer.address}</span>
-                          </span>
-                        )}
-                        {(selectedCustomer.store_location_url || deliveryLocationUrl) && (
-                          <a 
-                            href={deliveryLocationUrl || selectedCustomer.store_location_url} 
-                            target="_blank" 
-                            rel="noreferrer" 
-                            className="text-cyan-600 dark:text-cyan-400 font-semibold flex items-center gap-1 hover:underline"
-                          >
-                            <ExternalLink size={12} /> Ver Maps
-                          </a>
-                        )}
-                      </div>
-                    )}
+                      {isRestockMode ? (
+                        <div className="text-[11px] sm:text-xs text-indigo-700 dark:text-indigo-300 mt-0.5 font-medium">
+                          Puedes agregar o quitar ítems si ya no hay en almacén. Se confirma recién cuando llegue físicamente a la tienda.
+                        </div>
+                      ) : dispatchChannel === 'VENTA_RAPIDA_TIENDA' ? (
+                        <div className="text-[11px] sm:text-xs text-amber-800 dark:text-amber-300 mt-0.5 font-semibold">
+                          Dirección de entrega fijada automáticamente en <strong>EN TIENDA</strong> • Encargado: <strong>{sellerName}</strong>
+                        </div>
+                      ) : (
+                        <div className="flex gap-2.5 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5 flex-wrap">
+                          {selectedCustomer.phone && (
+                            <span className="flex items-center gap-1">
+                              <Phone size={12} className="text-emerald-500" /> {selectedCustomer.phone}
+                            </span>
+                          )}
+                          {selectedCustomer.address && (
+                            <span className="flex items-center gap-1 truncate max-w-[200px] sm:max-w-none">
+                              <MapPin size={12} className="text-cyan-500 shrink-0" /> <span className="truncate">{selectedCustomer.address}</span>
+                            </span>
+                          )}
+                          {(selectedCustomer.store_location_url || deliveryLocationUrl) && (
+                            <a 
+                              href={deliveryLocationUrl || selectedCustomer.store_location_url} 
+                              target="_blank" 
+                              rel="noreferrer" 
+                              className="text-cyan-600 dark:text-cyan-400 font-semibold flex items-center gap-1 hover:underline"
+                            >
+                              <ExternalLink size={12} /> Ver Maps
+                            </a>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
+
+                  {!noteToEdit && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (items.some(i => i.product_id) && !window.confirm('¿Deseas volver al paso anterior?')) {
+                          return;
+                        }
+                        setIsRestockMode(false);
+                        setDispatchChannel('ALMACEN');
+                        setSelectedCustomer(null);
+                      }}
+                      className="px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shrink-0 shadow-xs"
+                      title="Cambiar tipo o cliente"
+                    >
+                      <RefreshCw size={12} />
+                      <span>{isRestockMode ? 'Cambiar a Venta' : 'Cambiar Cliente'}</span>
+                    </button>
+                  )}
                 </div>
 
-                {!noteToEdit && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (items.some(i => i.product_id) && !window.confirm('¿Deseas volver al paso anterior?')) {
-                        return;
-                      }
-                      setIsRestockMode(false);
-                      setSelectedCustomer(null);
-                    }}
-                    className="px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shrink-0 shadow-xs"
-                    title="Cambiar tipo o cliente"
-                  >
-                    <RefreshCw size={12} />
-                    <span>{isRestockMode ? 'Cambiar a Venta' : 'Cambiar Cliente'}</span>
-                  </button>
+                {/* Campos Rápidos en Venta Rápida en Tienda: Nombre y Celular Opcionales + Entrega Directa EN TIENDA */}
+                {!isRestockMode && dispatchChannel === 'VENTA_RAPIDA_TIENDA' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2 border-t border-amber-300/60 dark:border-amber-500/30">
+                    <div>
+                      <label className="text-[11px] font-extrabold text-slate-700 dark:text-slate-200 block mb-1">
+                        Nombre del Cliente (Opcional)
+                      </label>
+                      <input
+                        type="text"
+                        value={selectedCustomer.name === 'CLIENTE MOSTRADOR TIENDA' ? '' : (selectedCustomer.name || '')}
+                        onChange={e => setSelectedCustomer(prev => ({ ...prev, name: e.target.value.toUpperCase() }))}
+                        placeholder="Ej. JUAN PÉREZ (Opcional)"
+                        className="form-input text-xs font-bold h-9 w-full bg-white dark:bg-slate-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-extrabold text-slate-700 dark:text-slate-200 block mb-1">
+                        N° Celular / WhatsApp (Opcional)
+                      </label>
+                      <input
+                        type="text"
+                        value={selectedCustomer.phone || ''}
+                        onChange={e => setSelectedCustomer(prev => ({ ...prev, phone: e.target.value }))}
+                        placeholder="Ej. 70012345 (Opcional)"
+                        className="form-input text-xs font-bold h-9 w-full bg-white dark:bg-slate-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-extrabold text-slate-700 dark:text-slate-200 block mb-1">
+                        Dirección / Lugar de Entrega
+                      </label>
+                      <input
+                        type="text"
+                        readOnly
+                        value="EN TIENDA (MOSTRADOR)"
+                        className="form-input text-xs font-black h-9 w-full bg-emerald-50 dark:bg-emerald-500/15 border-emerald-400 text-emerald-800 dark:text-emerald-300 cursor-not-allowed"
+                      />
+                    </div>
+                  </div>
                 )}
               </div>
 
@@ -1641,25 +1705,18 @@ export default function NewSalesNoteModal({
               {/* General Note Logistics & Dates Bar */}
               <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80 rounded-2xl p-3 sm:p-4">
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3.5">
-                  {/* Encargado / Vendedor */}
+                  {/* Encargado / Vendedor (Fijado automáticamente al usuario de la sesión activa) */}
                   <div className="col-span-2 sm:col-span-1">
                     <label className="form-label text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
-                      {isRestockMode ? 'Solicitado por (Tienda)' : 'Vendedor / Encargado'}
+                      {isRestockMode ? 'Solicitado por (Usuario Activo)' : 'Vendedor / Encargado (Sesión Activa)'}
                     </label>
-                    <select 
-                      className="form-select text-xs font-bold h-10 w-full" 
-                      style={{ padding: '6px 12px', lineHeight: '1.3' }}
-                      value={sellerName} 
-                      onChange={e => setSellerName(e.target.value)}
-                    >
-                      {sellerName && !['DANIEL', 'JAIME', 'MOSTRADOR TIENDA', 'VENTAS MAYORISTA'].includes(sellerName) && (
-                        <option value={sellerName}>{sellerName}</option>
-                      )}
-                      <option value="DANIEL">DANIEL</option>
-                      <option value="JAIME">JAIME</option>
-                      <option value="MOSTRADOR TIENDA">MOSTRADOR TIENDA</option>
-                      <option value="VENTAS MAYORISTA">VENTAS MAYORISTA</option>
-                    </select>
+                    <input
+                      type="text"
+                      readOnly
+                      value={sellerName || getActiveSessionUserName()}
+                      title="El encargado se asigna automáticamente según el usuario que inició sesión"
+                      className="form-input text-xs font-black h-10 w-full bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white cursor-not-allowed"
+                    />
                   </div>
 
                   {/* Fecha Emisión */}
@@ -2450,7 +2507,15 @@ export default function NewSalesNoteModal({
                 />
               </div>
 
-              {/* Debajo de Observaciones: Lugar / Destino de Entrega & Ubicación de Tienda */}
+              {/* Debajo de Observaciones: En Venta Rápida en Tienda NO pide destino/GPS porque se entrega directo EN TIENDA */}
+              {dispatchChannel === 'VENTA_RAPIDA_TIENDA' ? (
+                <div className="mt-2 bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-500/40 rounded-xl p-3 flex items-center gap-2.5">
+                  <Store size={16} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <div className="text-xs text-emerald-900 dark:text-emerald-200 font-bold">
+                    Lugar de Entrega: <strong>EN TIENDA (Entrega inmediata en mostrador)</strong> • No requiere dirección ni GPS.
+                  </div>
+                </div>
+              ) : (
               <div className="mt-2 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 rounded-xl p-3 flex flex-col gap-2.5">
                 <div className="flex items-center gap-2">
                   <MapPin size={15} className="text-cyan-600 dark:text-cyan-400 shrink-0" />
@@ -2518,6 +2583,7 @@ export default function NewSalesNoteModal({
                   />
                 </div>
               </div>
+              )}
             </div>
 
             {/* Right: Resumen Económico */}
