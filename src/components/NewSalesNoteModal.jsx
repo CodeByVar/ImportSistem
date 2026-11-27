@@ -1199,7 +1199,7 @@ export default function NewSalesNoteModal({
                       </div>
                       <div className="min-w-0">
                         <div className="text-xs sm:text-sm font-black text-amber-950 dark:text-amber-200">
-                          ⚡ Venta Rápida en Tienda
+                          Venta Rápida en Tienda
                         </div>
                         <div className="text-[11px] text-amber-800/85 dark:text-amber-300/80">
                           Cliente compra en mostrador y se lo lleva ahora (No va a cola de Almacén).
@@ -1233,7 +1233,7 @@ export default function NewSalesNoteModal({
                       </div>
                       <div className="min-w-0">
                         <div className="text-xs sm:text-sm font-black text-indigo-950 dark:text-indigo-200">
-                          📦 Reposición Almacén → Tienda
+                          Reposición Almacén → Tienda
                         </div>
                         <div className="text-[11px] text-indigo-700/80 dark:text-indigo-300/80">
                           Pedir mercadería a Almacén para llenar Tienda (Sin cobro).
@@ -1541,7 +1541,7 @@ export default function NewSalesNoteModal({
                           {isRestockMode
                             ? 'TRASPASO INTERNO • EN CURSO'
                             : dispatchChannel === 'VENTA_RAPIDA_TIENDA'
-                              ? '🏪 ENTREGA EN TIENDA'
+                              ? 'ENTREGA EN TIENDA'
                               : (selectedCustomer.code || `CLI-${selectedCustomer.id}`)}
                         </span>
                       </div>
@@ -1661,7 +1661,10 @@ export default function NewSalesNoteModal({
                           : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
                       }`}
                     >
-                      <div className="text-xs font-black">📦 1. Despacho por Almacén</div>
+                      <div className="text-xs font-black flex items-center gap-1.5">
+                        <Package size={14} className="shrink-0" />
+                        <span>1. Despacho por Almacén</span>
+                      </div>
                       <div className="text-[10px] opacity-80 mt-0.5">Pedido que Almacén alista y lleva a entregar.</div>
                     </button>
 
@@ -1677,7 +1680,10 @@ export default function NewSalesNoteModal({
                           : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
                       }`}
                     >
-                      <div className="text-xs font-black">📲 2. Tienda manda a Almacén</div>
+                      <div className="text-xs font-black flex items-center gap-1.5">
+                        <Store size={14} className="shrink-0" />
+                        <span>2. Tienda manda a Almacén</span>
+                      </div>
                       <div className="text-[10px] opacity-80 mt-0.5">Vendido en Tienda para que Almacén lo cargue.</div>
                     </button>
 
@@ -1695,7 +1701,10 @@ export default function NewSalesNoteModal({
                           : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
                       }`}
                     >
-                      <div className="text-xs font-black">🏪 3. Venta Rápida en Tienda</div>
+                      <div className="text-xs font-black flex items-center gap-1.5">
+                        <Store size={14} className="shrink-0" />
+                        <span>3. Venta Rápida en Tienda</span>
+                      </div>
                       <div className="text-[10px] opacity-80 mt-0.5">Cliente se lo lleva ahora en mostrador (Va a Orden de Tienda).</div>
                     </button>
                   </div>

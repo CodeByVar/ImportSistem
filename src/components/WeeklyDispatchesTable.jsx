@@ -201,7 +201,7 @@ function describeAuditEvent(log) {
     case 'OUT_OF_HOURS_BLOCKED':
       return {
         category: 'SECURITY',
-        badgeLabel: '🚨 INTENTO FUERA DE HORARIO',
+        badgeLabel: 'INTENTO FUERA DE HORARIO',
         badgeColor: '#f43f5e',
         badgeBg: 'rgba(244, 63, 94, 0.2)',
         title: `Intento bloqueado de ingreso fuera de horario laboral (${log.target})`,
@@ -1016,8 +1016,8 @@ export default function WeeklyDispatchesTable({ userRole = 'SUPER_ADMIN' }) {
                         <td>
                           <div style={{ fontWeight: 700, color: '#f8fafc' }}>{p.name}</div>
                           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '2px' }}>
-                            <span>🏷️ {p.brand || 'GENERAL'}</span>
-                            <span>📍 {p.warehouse || 'CASA CUBANO'}</span>
+                            <span>Marca: {p.brand || 'GENERAL'}</span>
+                            <span>• Bodega: {p.warehouse || 'CASA CUBANO'}</span>
                             {p.notes_summary && (
                               <button
                                 type="button"
@@ -1277,12 +1277,12 @@ export default function WeeklyDispatchesTable({ userRole = 'SUPER_ADMIN' }) {
             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
               {[
                 { id: 'ALL', label: 'Todas las Acciones' },
-                { id: 'MODIFICATIONS', label: '✏️ Modificaciones de Notas' },
-                { id: 'CONFIRMATIONS', label: '✅ Confirmaciones (Entrega/Tienda)' },
-                { id: 'NOTES', label: '📋 Nuevas Notas / Reposiciones' },
-                { id: 'PAYMENTS', label: '💵 Cobros & Caja' },
-                { id: 'INVENTORY', label: '📦 Cambios de Stock / Precios' },
-                { id: 'CANCELLATIONS', label: '❌ Anulaciones' }
+                { id: 'MODIFICATIONS', label: 'Modificaciones de Notas' },
+                { id: 'CONFIRMATIONS', label: 'Confirmaciones (Entrega/Tienda)' },
+                { id: 'NOTES', label: 'Nuevas Notas / Reposiciones' },
+                { id: 'PAYMENTS', label: 'Cobros & Caja' },
+                { id: 'INVENTORY', label: 'Cambios de Stock / Precios' },
+                { id: 'CANCELLATIONS', label: 'Anulaciones' }
               ].map(cat => (
                 <button
                   key={cat.id}
@@ -1314,7 +1314,7 @@ export default function WeeklyDispatchesTable({ userRole = 'SUPER_ADMIN' }) {
               >
                 {auditUsersList.map(u => (
                   <option key={u} value={u}>
-                    {u === 'ALL' ? '👤 Todos los Usuarios' : `👤 Usuario: ${u}`}
+                    {u === 'ALL' ? 'Todos los Usuarios' : `Usuario: ${u}`}
                   </option>
                 ))}
               </select>

@@ -778,7 +778,7 @@ export default function DailyOrdersSection({
             }`}
           >
             <Truck size={15} />
-            <span>📦 Orden del Día — ALMACÉN ({boardStats.almacenCount})</span>
+            <span>Orden del Día — ALMACÉN ({boardStats.almacenCount})</span>
             {boardStats.sentFromStoreCount > 0 && (
               <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-[#FF8C00] text-white dark:bg-[#0D0D0D] dark:text-[#FFC107]">
                 {boardStats.sentFromStoreCount} de Tienda
@@ -796,7 +796,7 @@ export default function DailyOrdersSection({
             }`}
           >
             <Store size={15} />
-            <span>🏪 Orden del Día — TIENDA ({boardStats.tiendaCount})</span>
+            <span>Orden del Día — TIENDA ({boardStats.tiendaCount})</span>
           </button>
 
           <button
@@ -808,7 +808,8 @@ export default function DailyOrdersSection({
                 : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:bg-slate-50'
             }`}
           >
-            <span>👁️ Todo Consolidado ({rows.length})</span>
+            <ClipboardList size={14} />
+            <span>Todo Consolidado ({rows.length})</span>
           </button>
         </div>
 
@@ -908,7 +909,9 @@ export default function DailyOrdersSection({
                       {meta.isSentFromStoreToWarehouse && (
                         <div style={{ marginBottom: '4px' }}>
                           <span style={{
-                            display: 'inline-block',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
                             padding: '2px 7px',
                             borderRadius: '5px',
                             fontSize: '0.65rem',
@@ -917,14 +920,17 @@ export default function DailyOrdersSection({
                             color: '#FF8C00',
                             border: '1px solid rgba(255, 140, 0, 0.4)'
                           }}>
-                            📲 ENVIADO DESDE TIENDA → CARGAR EN ALMACÉN
+                            <Store size={11} />
+                            <span>ENVIADO DESDE TIENDA → CARGAR EN ALMACÉN</span>
                           </span>
                         </div>
                       )}
                       {meta.isQuickStoreSale && (
                         <div style={{ marginBottom: '4px' }}>
                           <span style={{
-                            display: 'inline-block',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
                             padding: '2px 7px',
                             borderRadius: '5px',
                             fontSize: '0.65rem',
@@ -933,7 +939,8 @@ export default function DailyOrdersSection({
                             color: '#10b981',
                             border: '1px solid rgba(16, 185, 129, 0.4)'
                           }}>
-                            🏪 VENTA RÁPIDA EN TIENDA (MOSTRADOR)
+                            <Store size={11} />
+                            <span>VENTA RÁPIDA EN TIENDA (MOSTRADOR)</span>
                           </span>
                         </div>
                       )}
@@ -1363,13 +1370,15 @@ export default function DailyOrdersSection({
                 }}
               >
                 {meta.isSentFromStoreToWarehouse && (
-                  <div className="px-2.5 py-1 rounded-lg bg-[#FF8C00]/15 border border-[#FF8C00]/40 text-[#FF8C00] dark:text-[#FFC107] text-[10px] font-black uppercase tracking-wide">
-                    📲 Enviado desde Tienda → Cargar en Almacén
+                  <div className="px-2.5 py-1 rounded-lg bg-[#FF8C00]/15 border border-[#FF8C00]/40 text-[#FF8C00] dark:text-[#FFC107] text-[10px] font-black uppercase tracking-wide inline-flex items-center gap-1.5">
+                    <Store size={12} />
+                    <span>Enviado desde Tienda → Cargar en Almacén</span>
                   </div>
                 )}
                 {meta.isQuickStoreSale && (
-                  <div className="px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/40 text-emerald-700 dark:text-emerald-300 text-[10px] font-black uppercase tracking-wide">
-                    🏪 Venta Rápida en Tienda (Mostrador)
+                  <div className="px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/40 text-emerald-700 dark:text-emerald-300 text-[10px] font-black uppercase tracking-wide inline-flex items-center gap-1.5">
+                    <Store size={12} />
+                    <span>Venta Rápida en Tienda (Mostrador)</span>
                   </div>
                 )}
                 {/* Top Bar: Row #, Customer Name, Note Code badge & Actions */}
