@@ -718,3 +718,4 @@ export default function PriceAdjustmentModal({ isOpen, onClose, onPricesAdjusted
     document.body
   );
 }
+

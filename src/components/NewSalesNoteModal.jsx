@@ -22,12 +22,18 @@ import {
   Store
 } from 'lucide-react';
 
-// Searchable Combobox for selecting products from entire 5,400+ DB (Default: Solo con Stock > 0)
-function ProductSearchCombobox({ products, item, onSelectProduct, onClearProduct, liveStockOverrides = {} }) {
+// Searchable Combobox for selecting products from entire 5,400+ DB (Default: Solo con Stock > 0 en Almacén, o Todo el Catálogo si sale de Tienda)
+function ProductSearchCombobox({ products, item, onSelectProduct, onClearProduct, liveStockOverrides = {}, isStoreOrigin = false }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [isOpen, setIsOpen] = useState(false);
-  const [onlyInStock, setOnlyInStock] = useState(true);
+  const [onlyInStock, setOnlyInStock] = useState(!isStoreOrigin);
   const containerRef = useRef(null);
+
+  useEffect(() => {
+    if (isStoreOrigin) {
+      setOnlyInStock(false);
+    }
+  }, [isStoreOrigin]);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -61,12 +67,12 @@ function ProductSearchCombobox({ products, item, onSelectProduct, onClearProduct
     const inStockMatches = matched.filter(p => getLiveStock(p) > 0);
     const outCount = matched.length - inStockMatches.length;
 
-    const list = onlyInStock ? inStockMatches : matched;
+    const list = (onlyInStock && !isStoreOrigin) ? inStockMatches : matched;
     return {
       filteredProducts: list.slice(0, term ? 50 : 30),
       hiddenOutOfStockCount: outCount
     };
-  }, [products, searchTerm, onlyInStock, liveStockOverrides]);
+  }, [products, searchTerm, onlyInStock, isStoreOrigin, liveStockOverrides]);
 
   if (item.product_id) {
     const displayStock = liveStockOverrides[item.product_id] !== undefined
@@ -84,10 +90,16 @@ function ProductSearchCombobox({ products, item, onSelectProduct, onClearProduct
               {item.description}
             </span>
           </div>
-          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 flex gap-2 items-center">
-            <span className={`font-bold ${displayStock > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400'}`}>
-              Stock: {Math.max(0, displayStock)} u.
-            </span>
+          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 flex gap-2 items-center flex-wrap">
+            {isStoreOrigin ? (
+              <span className="font-extrabold text-amber-700 dark:text-amber-300 bg-amber-100/80 dark:bg-amber-500/20 px-1.5 py-0.5 rounded">
+                Salida de Tienda (No descuenta stock Almacén)
+              </span>
+            ) : (
+              <span className={`font-bold ${displayStock > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400'}`}>
+                Stock Almacén: {Math.max(0, displayStock)} u.
+              </span>
+            )}
             <span>• {item.units_per_box || 1} u/cj</span>
           </div>
         </div>
@@ -581,6 +593,7 @@ export default function NewSalesNoteModal({
 
   // Add Item row
   const handleAddItem = () => {
+    const isStoreQuick = dispatchChannel === 'VENTA_RAPIDA_TIENDA';
     setItems(prev => [
       ...prev,
       {
@@ -589,17 +602,17 @@ export default function NewSalesNoteModal({
         sku: '',
         description: '',
         unit_med: 'UNI',
-        sale_mode: 'CAJA',
+        sale_mode: isStoreQuick ? 'UNIDAD' : 'CAJA',
         boxes_count: 1,
         units_per_box: 1,
         quantity: 1,
         unit_price: '',
-        price_type: 'caja',
+        price_type: isStoreQuick ? 'mayor' : 'caja',
         wholesale_price: 0,
         box_price: 0,
         special_price: 0,
         sale_price: 0,
-        warehouse_source: 'ALMACEN',
+        warehouse_source: isStoreQuick ? 'TIENDA' : 'ALMACEN',
         stock_now: 0
       }
     ]);
@@ -812,15 +825,18 @@ export default function NewSalesNoteModal({
     }
   });
 
-  // Smart Stock Validation (Option 2): Compute live shortages per product_id
+  // Smart Stock Validation: Solo valida stock de Almacén para ítems que salen de ALMACÉN (NO para Venta Rápida en Tienda ni ítems con origen TIENDA)
   const { stockShortages, shortageByProductId } = useMemo(() => {
-    if (isRestockMode) return { stockShortages: [], shortageByProductId: {} };
+    if (isRestockMode || dispatchChannel === 'VENTA_RAPIDA_TIENDA') {
+      return { stockShortages: [], shortageByProductId: {} };
+    }
 
     const requestedMap = new Map();
     const metaMap = new Map();
 
     for (const it of items) {
       if (!it.product_id) continue;
+      if (String(it.warehouse_source || 'ALMACEN').toUpperCase() === 'TIENDA') continue;
       const isBox = it.sale_mode === 'CAJA';
       const qtyUnits = isBox
         ? parseInt(it.boxes_count || 0, 10) * parseInt(it.units_per_box || 1, 10)
@@ -852,7 +868,7 @@ export default function NewSalesNoteModal({
       }
     }
     return { stockShortages: list, shortageByProductId: byId };
-  }, [items, products, liveStockOverrides, isRestockMode]);
+  }, [items, products, liveStockOverrides, isRestockMode, dispatchChannel]);
 
   const handleQuickStockIn = async (item) => {
     if (!item?.product_id) return;
@@ -977,6 +993,7 @@ export default function NewSalesNoteModal({
 
       const payload = {
         note_type: isRestockMode ? 'REPOSICION_TIENDA' : 'VENTA',
+        dispatch_channel: dispatchChannel,
         delivery_status: isQuickStoreSale ? 'ENTREGADO' : 'PENDIENTE',
         allow_pending_arrival: !isRestockMode && allowPendingArrival,
         shift: restockShift,
@@ -1007,7 +1024,7 @@ export default function NewSalesNoteModal({
           units_per_box: parseInt(it.units_per_box || 1, 10),
           quantity: it.sale_mode === 'CAJA' ? parseInt(it.boxes_count || 1, 10) * parseInt(it.units_per_box || 1, 10) : parseInt(it.quantity || 1, 10),
           unit_price: isRestockMode ? 0 : (parseFloat(it.unit_price) || 0),
-          warehouse_source: it.warehouse_source || 'ALMACEN'
+          warehouse_source: isQuickStoreSale ? 'TIENDA' : (it.warehouse_source || 'ALMACEN')
         })),
         payments: isRestockMode ? [] : (() => {
           const list = [];
@@ -1793,14 +1810,27 @@ export default function NewSalesNoteModal({
                   </button>
                 </div>
 
+                {/* Aviso claro de protección de Stock de Almacén cuando la salida es de Tienda */}
+                {!isRestockMode && (dispatchChannel === 'VENTA_RAPIDA_TIENDA' || items.some(it => it.warehouse_source === 'TIENDA')) && (
+                  <div className="mb-3 p-2.5 rounded-xl bg-amber-50/90 dark:bg-amber-950/35 border border-amber-300 dark:border-amber-500/40 flex items-center gap-2 text-xs text-amber-950 dark:text-amber-200 font-bold">
+                    <Store size={15} className="text-[#FF8C00] shrink-0" />
+                    <span>
+                      {dispatchChannel === 'VENTA_RAPIDA_TIENDA'
+                        ? 'Modo Venta en Tienda Activo: Esta venta registrará el dinero en Caja y Planilla de Tienda, pero NO descontará del Stock de Almacén.'
+                        : 'Hay artículos marcados con origen "Tienda": Esos artículos de mostrador NO descontarán del Stock de Almacén (solo se descontarán los de Almacén).'}
+                    </span>
+                  </div>
+                )}
+
             {/* Items Dynamic Rows: Responsive Card on Mobile, Single Row on Desktop */}
             <div className="flex flex-col gap-3">
               {items.map((it, idx) => {
                 const isBox = it.sale_mode === 'CAJA';
+                const isRowFromStore = dispatchChannel === 'VENTA_RAPIDA_TIENDA' || String(it.warehouse_source || '').toUpperCase() === 'TIENDA';
                 const rowSubtotal = isBox 
                   ? (parseInt(it.boxes_count || 0, 10) * parseInt(it.units_per_box || 1, 10) * (parseFloat(it.unit_price) || 0))
                   : (parseInt(it.quantity || 0, 10) * (parseFloat(it.unit_price) || 0));
-                const rowShortage = !isRestockMode && it.product_id ? shortageByProductId[it.product_id] : null;
+                const rowShortage = (!isRestockMode && !isRowFromStore && it.product_id) ? shortageByProductId[it.product_id] : null;
                 const displayStock = it.product_id && liveStockOverrides[it.product_id] !== undefined
                   ? Number(liveStockOverrides[it.product_id])
                   : Number(it.stock_now || 0);
@@ -1818,7 +1848,7 @@ export default function NewSalesNoteModal({
                     <div className="flex-1 lg:flex-[2.5] min-w-0">
                       <div className="flex items-center justify-between mb-1 lg:mb-0.5">
                         <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                          #{idx + 1} Producto ({it.product_id ? `Stock: ${Math.max(0, displayStock)} u.` : 'Buscador'}) *
+                          #{idx + 1} Producto ({it.product_id ? (isRowFromStore ? 'Salida de Tienda' : `Stock Almacén: ${Math.max(0, displayStock)} u.`) : 'Buscador'}) *
                         </label>
                         {/* Mobile delete button placed conveniently in top right */}
                         <button 
@@ -1834,6 +1864,7 @@ export default function NewSalesNoteModal({
                       <ProductSearchCombobox 
                         products={products}
                         item={it}
+                        isStoreOrigin={isRowFromStore}
                         liveStockOverrides={liveStockOverrides}
                         onSelectProduct={(p) => handleSelectProduct(it.id, p)}
                         onClearProduct={() => handleClearProduct(it.id)}

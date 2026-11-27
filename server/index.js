@@ -3013,6 +3013,33 @@ app.get('/api/sales-notes/:id', (req, res) => {
   }
 });
 
+// =============================================================================
+// REGLA DE STOCK TIENDA VS ALMACÉN:
+// Los artículos que salen de TIENDA (Venta Rápida en Mostrador o ítem con origen 'TIENDA')
+// NO descuentan ni se bloquean contra el Stock de Almacén (products.current_stock).
+// =============================================================================
+function isStoreCounterNote(noteOrPayload = {}) {
+  const dtype = String(noteOrPayload.delivery_type || '').toUpperCase();
+  const ddest = String(noteOrPayload.delivery_destination || '').toUpperCase();
+  const chan = String(noteOrPayload.dispatch_channel || '').toUpperCase();
+  return (
+    chan === 'VENTA_RAPIDA_TIENDA' ||
+    dtype.includes('VENTA RÁPIDA EN TIENDA') ||
+    dtype.includes('VENTA RAPIDA EN TIENDA') ||
+    dtype.includes('RETIRO EN TIENDA') ||
+    ddest === 'EN TIENDA' ||
+    ddest === 'MOSTRADOR TIENDA' ||
+    ddest.includes('EN TIENDA (MOSTRADOR)')
+  );
+}
+
+function shouldItemDeductWarehouseStock(item = {}, noteOrPayload = {}) {
+  if (isStoreCounterNote(noteOrPayload)) return false;
+  const src = String(item.warehouse_source || 'ALMACEN').toUpperCase().trim();
+  if (src === 'TIENDA' || src === 'TIENDA CENTRAL' || src === 'MOSTRADOR') return false;
+  return true;
+}
+
 app.post('/api/sales-notes', (req, res) => {
   const {
     customer_id,
@@ -3031,21 +3058,23 @@ app.post('/api/sales-notes', (req, res) => {
   } = req.body;
 
   const isRestock = req.body.note_type === 'REPOSICION_TIENDA';
+  const isStoreCounter = !isRestock && isStoreCounterNote(req.body);
   const allowPendingArrival = Boolean(req.body.allow_pending_arrival);
   const effectiveCustomerName = isRestock
     ? (customer_name && customer_name.trim() ? customer_name.trim() : 'REPOSICIÓN TIENDA')
-    : customer_name;
+    : (customer_name && customer_name.trim() ? customer_name.trim() : (isStoreCounter ? 'CLIENTE EN TIENDA' : customer_name));
 
   if (!effectiveCustomerName || !items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ success: false, error: 'Debe especificar el destino/cliente y al menos un producto a despachar.' });
   }
 
-  // Smart Stock Validation (Option 2): Validate stock for VENTA notes unless controlled pending-arrival override is explicitly checked
+  // Smart Stock Validation: Solo validar contra Stock de Almacén los ítems que físicamente salen de ALMACÉN (NO los de Tienda)
   let hasStockShortage = false;
-  if (!isRestock && req.body.status !== 'PRE-RESERVA') {
+  if (!isRestock && !isStoreCounter && req.body.status !== 'PRE-RESERVA') {
     const requestedByProduct = new Map();
     for (const item of items) {
       if (!item.product_id) continue;
+      if (!shouldItemDeductWarehouseStock(item, req.body)) continue;
       const mode = item.sale_mode || 'CAJA';
       const qtyUnits = mode === 'CAJA'
         ? parseInt(item.boxes_count || 1, 10) * parseInt(item.units_per_box || 1, 10)
@@ -3136,7 +3165,8 @@ app.post('/api/sales-notes', (req, res) => {
 
     const isImmediateDelivery = !isRestock && req.body.delivery_status === 'ENTREGADO';
     const deliveryStatus = isRestock ? 'EN_CURSO' : (isImmediateDelivery ? 'ENTREGADO' : 'PENDIENTE');
-    const stockDeducted = isImmediateDelivery ? 1 : 0;
+    const hasWarehouseItems = items.some(it => shouldItemDeductWarehouseStock(it, req.body));
+    const stockDeducted = (isImmediateDelivery && hasWarehouseItems) ? 1 : 0;
     const deliveredAt = isImmediateDelivery ? (date || new Date().toISOString().split('T')[0]) : null;
     const noteType = isRestock ? 'REPOSICION_TIENDA' : 'VENTA';
 
@@ -3228,6 +3258,8 @@ app.post('/api/sales-notes', (req, res) => {
         sub = qtyUnits * unitPrice;
       }
 
+      const resolvedWarehouseSource = isStoreCounter ? 'TIENDA' : (item.warehouse_source || 'ALMACEN');
+
       insertItemStmt.run(
         noteId,
         item.product_id || null,
@@ -3240,12 +3272,11 @@ app.post('/api/sales-notes', (req, res) => {
         qtyUnits,
         unitPrice,
         sub,
-        item.warehouse_source || 'ALMACEN'
+        resolvedWarehouseSource
       );
 
-      // El stock NO se descuenta al crear la nota, ni sube a la planilla aún.
-      // Se descuenta y sube RECIÉN una vez confirmada la entrega (estado ENTREGADO).
-      if (isImmediateDelivery && item.product_id && !isPreReserva) {
+      // El stock de Almacén SOLO se descuenta si la entrega es inmediata Y el artículo sale físicamente de ALMACÉN (NO de Tienda).
+      if (isImmediateDelivery && item.product_id && !isPreReserva && shouldItemDeductWarehouseStock({ ...item, warehouse_source: resolvedWarehouseSource }, req.body)) {
         deductStockStmt.run(qtyUnits, item.product_id);
 
         const prod = db.prepare('SELECT landed_cost FROM products WHERE id = ?').get(item.product_id);
@@ -3259,10 +3290,10 @@ app.post('/api/sales-notes', (req, res) => {
           sub,
           profit,
           noteCode,
-          customer_name.trim().toUpperCase(),
+          effectiveCustomerName.trim().toUpperCase(),
           payments && payments.length > 0 ? payments[0].payment_method : 'Efectivo / Crédito',
           date || new Date().toISOString().split('T')[0],
-          `Entrega Inmediata - Nota ${noteCode} (${mode === 'CAJA' ? `${boxesCount} cj` : `${qtyUnits} u`}) - ${item.warehouse_source || 'ALMACEN'}`
+          `Entrega Inmediata - Nota ${noteCode} (${mode === 'CAJA' ? `${boxesCount} cj` : `${qtyUnits} u`}) - ${resolvedWarehouseSource}`
         );
       }
     }
@@ -3580,24 +3611,26 @@ app.put('/api/sales-notes/:id', (req, res) => {
     const allowPendingArrival = Boolean(req.body.allow_pending_arrival) || existingNote.pending_stock_arrival === 1;
     const wasStockDeducted = !isRestock && existingNote.stock_deducted === 1;
 
-    // 1. Revertir deducción de stock y movimientos antiguos SOLO si ya se había descontado
+    // 1. Revertir deducción de stock y movimientos antiguos SOLO para ítems que descontaron de ALMACÉN
     if (wasStockDeducted) {
       const oldItems = db.prepare('SELECT * FROM sales_note_items WHERE note_id = ?').all(noteId);
       const restoreStockStmt = db.prepare('UPDATE products SET current_stock = current_stock + ? WHERE id = ?');
       for (const oi of oldItems) {
-        if (oi.product_id) {
+        if (oi.product_id && shouldItemDeductWarehouseStock(oi, existingNote)) {
           restoreStockStmt.run(oi.quantity, oi.product_id);
         }
       }
       db.prepare('DELETE FROM inventory_movements WHERE reference = ?').run(existingNote.note_code);
     }
 
-    // 1b. Smart Stock Validation (Option 2) on VENTA edits
+    // 1b. Smart Stock Validation en edición: solo validar contra Stock de Almacén los ítems que salen de ALMACÉN
+    const isEditStoreCounter = !isRestock && isStoreCounterNote(req.body);
     let hasEditShortage = false;
-    if (!isRestock && existingNote.status !== 'PRE-RESERVA') {
+    if (!isRestock && !isEditStoreCounter && existingNote.status !== 'PRE-RESERVA') {
       const reqMap = new Map();
       for (const item of items) {
         if (!item.product_id) continue;
+        if (!shouldItemDeductWarehouseStock(item, req.body)) continue;
         const mode = item.sale_mode || 'CAJA';
         const q = mode === 'CAJA'
           ? parseInt(item.boxes_count || 1, 10) * parseInt(item.units_per_box || 1, 10)
@@ -3671,6 +3704,8 @@ app.put('/api/sales-notes/:id', (req, res) => {
       totalUnits += qtyUnits;
       totalAmount += sub;
 
+      const resolvedEditSource = isEditStoreCounter ? 'TIENDA' : (item.warehouse_source || 'ALMACEN');
+
       insertItemStmt.run(
         noteId,
         item.product_id || null,
@@ -3683,11 +3718,11 @@ app.put('/api/sales-notes/:id', (req, res) => {
         qtyUnits,
         unitPrice,
         sub,
-        item.warehouse_source || 'ALMACEN'
+        resolvedEditSource
       );
 
-      // Descontar stock SOLO si la nota ya estaba confirmada como entregada
-      if (wasStockDeducted && item.product_id) {
+      // Descontar stock de Almacén SOLO si la nota ya estaba confirmada como entregada Y el ítem sale de ALMACÉN
+      if (wasStockDeducted && item.product_id && shouldItemDeductWarehouseStock({ ...item, warehouse_source: resolvedEditSource }, req.body)) {
         deductStockStmt.run(qtyUnits, item.product_id);
 
         const prod = db.prepare('SELECT landed_cost FROM products WHERE id = ?').get(item.product_id);
@@ -3704,7 +3739,7 @@ app.put('/api/sales-notes/:id', (req, res) => {
           customer_name.trim().toUpperCase(),
           'Venta Modificada',
           date || existingNote.date,
-          `Nota ${existingNote.note_code} (${mode === 'CAJA' ? `${boxesCount} cj` : `${qtyUnits} u`}) - ${item.warehouse_source || 'ALMACEN'}`
+          `Nota ${existingNote.note_code} (${mode === 'CAJA' ? `${boxesCount} cj` : `${qtyUnits} u`}) - ${resolvedEditSource}`
         );
       }
     }
@@ -4002,7 +4037,7 @@ app.post('/api/sales-notes/:id/deliver', (req, res) => {
       WHERE sales_note_id = ?
     `).run(noteId);
 
-    // DESCONTAR RECIÉN EL STOCK FÍSICO AL CONFIRMAR LA ENTREGA (nunca baja de 0 para evitar negativos)
+    // DESCONTAR RECIÉN EL STOCK FÍSICO DE ALMACÉN AL CONFIRMAR LA ENTREGA (Solo para ítems con origen ALMACÉN)
     if (!note.stock_deducted || note.stock_deducted === 0) {
       const noteItems = db.prepare('SELECT * FROM sales_note_items WHERE note_id = ?').all(noteId);
       const deductStockStmt = db.prepare('UPDATE products SET current_stock = MAX(0, current_stock - ?), updated_at = CURRENT_TIMESTAMP WHERE id = ?');
@@ -4014,7 +4049,7 @@ app.post('/api/sales-notes/:id/deliver', (req, res) => {
       `);
 
       for (const it of noteItems) {
-        if (it.product_id) {
+        if (it.product_id && shouldItemDeductWarehouseStock(it, note)) {
           deductStockStmt.run(it.quantity, it.product_id);
 
           const prod = db.prepare('SELECT landed_cost FROM products WHERE id = ?').get(it.product_id);
@@ -4148,12 +4183,12 @@ app.delete('/api/sales-notes/:id', requireRoles('SUPER_ADMIN', 'ADMIN', 'VENTAS'
       details: { customer: note.customer_name, total: note.total_amount }
     });
 
-    // Reponer stock SOLO si el stock fue descontado previamente al confirmar entrega (stock_deducted === 1)
+    // Reponer stock SOLO si el stock fue descontado previamente de Almacén (stock_deducted === 1) y el ítem salió de Almacén
     if (note.stock_deducted === 1) {
       const items = db.prepare('SELECT * FROM sales_note_items WHERE note_id = ?').all(req.params.id);
       const restoreStockStmt = db.prepare('UPDATE products SET current_stock = current_stock + ? WHERE id = ?');
       for (const item of items) {
-        if (item.product_id) {
+        if (item.product_id && shouldItemDeductWarehouseStock(item, note)) {
           restoreStockStmt.run(item.quantity, item.product_id);
         }
       }
@@ -4391,7 +4426,7 @@ app.post('/api/daily-orders/save', (req, res) => {
               `);
 
               for (const it of noteItems) {
-                if (it.product_id) {
+                if (it.product_id && shouldItemDeductWarehouseStock(it, note)) {
                   deductStmt.run(it.quantity, it.product_id);
                   const prod = db.prepare('SELECT landed_cost FROM products WHERE id = ?').get(it.product_id);
                   const cost = prod ? prod.landed_cost : 0;
@@ -4406,11 +4441,11 @@ app.post('/api/daily-orders/save', (req, res) => {
 
               db.prepare(`UPDATE sales_notes SET delivery_status = 'ENTREGADO', stock_deducted = 1, delivered_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(o.sales_note_id);
             } else if (o.status !== 'ENTREGADO' && note.stock_deducted === 1) {
-              // Si se revirtió el estado de ENTREGADO a otro estado, reponer stock
+              // Si se revirtió el estado de ENTREGADO a otro estado, reponer stock de Almacén
               const noteItems = db.prepare('SELECT * FROM sales_note_items WHERE note_id = ?').all(o.sales_note_id);
               const restoreStmt = db.prepare('UPDATE products SET current_stock = current_stock + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
               for (const it of noteItems) {
-                if (it.product_id) {
+                if (it.product_id && shouldItemDeductWarehouseStock(it, note)) {
                   restoreStmt.run(it.quantity, it.product_id);
                 }
               }
